@@ -25,8 +25,6 @@ export {
 
 export { MapRoute, ROUTE_LAYER_PREFIX, ROUTE_SOURCE_PREFIX } from './map-route'
 
-export { MapClusterLayer } from './map-cluster'
-
 export { MapControls } from './map-controls'
 
 type MapContextValue = {
@@ -112,8 +110,6 @@ function Map({ children, styles, ...props }: MapProps) {
       mapInstance.off('styledata', styleDataHandler)
       mapInstance.remove()
       mapRef.current = null
-      setIsLoaded(false)
-      setIsStyleLoaded(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

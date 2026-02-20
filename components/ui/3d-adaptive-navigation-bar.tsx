@@ -72,7 +72,12 @@ export const PillBase: React.FC = () => {
 
   const pillWidth = useSpring(140, { stiffness: 220, damping: 25, mass: 1 })
 
-  const pillShift = useSpring(0, { stiffness: 220, damping: 25, mass: 1 })
+  // Cleanup hover timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    }
+  }, [])
 
   // Scroll detection to update active section
   useEffect(() => {
@@ -263,8 +268,6 @@ export const PillBase: React.FC = () => {
             inset 0 0 1px rgba(0, 0, 0, 0.15)
 
           `,
-
-        x: pillShift,
 
         overflow: 'hidden',
 

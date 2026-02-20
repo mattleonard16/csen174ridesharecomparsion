@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import type { LocationSuggestion, CommonPlaces } from '@/types'
 
 // Constants
@@ -197,6 +197,13 @@ export function useLocationSuggestions({
   const [isLoading, setIsLoading] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Abort in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort()
+    }
+  }, [])
 
   const fetchSuggestions = useCallback(
     async (query: string) => {

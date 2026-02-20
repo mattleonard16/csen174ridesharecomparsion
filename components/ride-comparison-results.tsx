@@ -386,6 +386,14 @@ export default memo(function RideComparisonResults({
     [historicalStats]
   )
 
+  const handleRecommendationAction = useCallback((recId: string, action: string) => {
+    fetch('/api/recommendations/actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recommendationId: recId, action }),
+    }).catch(() => {})
+  }, [])
+
   // Check if we have any historical stats to display
   const hasHistoricalStats = useMemo(
     () =>
@@ -607,13 +615,7 @@ export default memo(function RideComparisonResults({
       {aiRecommendations.length > 0 && (
         <RecommendationsPanel
           recommendations={aiRecommendations}
-          onAction={(recId, action) => {
-            fetch('/api/recommendations/actions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ recommendationId: recId, action }),
-            }).catch(() => {})
-          }}
+          onAction={handleRecommendationAction}
         />
       )}
 
