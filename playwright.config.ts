@@ -11,7 +11,18 @@ export default defineConfig({
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'demo',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        video: 'on',
+        launchOptions: { slowMo: 600 },
+      },
+    },
+  ],
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
