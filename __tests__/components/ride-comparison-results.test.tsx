@@ -1,5 +1,13 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import RideComparisonResults from '@/components/ride-comparison-results'
+
+// Mock fetch to simulate AI insights failure (so rule-based fallback renders)
+beforeEach(() => {
+  global.fetch = jest.fn().mockRejectedValue(new Error('network error'))
+})
+afterEach(() => {
+  jest.restoreAllMocks()
+})
 
 // Mock the auth context
 jest.mock('@/lib/auth-context', () => ({
@@ -54,10 +62,19 @@ describe('RideComparisonResults', () => {
     expect(screen.getByText('$30.00')).toBeInTheDocument()
   })
 
-  it('shows the insights message', () => {
-    render(<RideComparisonResults results={mockResults} insights={mockInsights} />)
+  it('shows the insights message as fallback when AI fails', async () => {
+    render(
+      <RideComparisonResults
+        results={mockResults}
+        insights={mockInsights}
+        pickup="SFO"
+        destination="Union Square"
+      />
+    )
 
-    expect(screen.getByText(mockInsights)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(mockInsights)).toBeInTheDocument()
+    })
   })
 
   it('displays wait times and driver availability', () => {

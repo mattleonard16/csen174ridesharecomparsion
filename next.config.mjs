@@ -40,7 +40,7 @@ const productionHeaders = isDev
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
           "font-src 'self'",
-          "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://www.google.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
+          "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://www.google.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://api.openai.com",
           'frame-src https://www.google.com',
           "object-src 'none'",
           "base-uri 'self'",

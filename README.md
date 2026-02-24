@@ -2,6 +2,8 @@
 
 Compare prices and wait times across Uber, Lyft, and Taxi services in the Bay Area.
 
+![Landing Page](landing-page.png)
+
 ## Prerequisites
 
 - Node.js 20+
