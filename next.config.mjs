@@ -38,9 +38,9 @@ const productionHeaders = isDev
           "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com",
           "worker-src 'self' blob:",
           "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tiles.stadiamaps.com",
+          "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
           "font-src 'self'",
-          "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://www.google.com https://tiles.stadiamaps.com",
+          "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://www.google.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com",
           'frame-src https://www.google.com',
           "object-src 'none'",
           "base-uri 'self'",
@@ -75,10 +75,10 @@ if (!isDev) {
     disable: false,
     runtimeCaching: [
       {
-        urlPattern: /^https:\/\/tiles\.stadiamaps\.com\/.*/i,
+        urlPattern: /^https:\/\/.*\.basemaps\.cartocdn\.com\/.*/i,
         handler: 'CacheFirst',
         options: {
-          cacheName: 'stadia-tiles',
+          cacheName: 'carto-tiles',
           expiration: {
             maxEntries: 200,
             maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days

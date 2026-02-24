@@ -43,8 +43,8 @@ function useMap() {
 }
 
 const defaultStyles = {
-  dark: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
-  light: 'https://tiles.stadiamaps.com/styles/alidade_smooth.json',
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
 }
 
 type MapStyleOption = string | MapLibreGL.StyleSpecification
@@ -99,7 +99,10 @@ function Map({ children, styles, ...props }: MapProps) {
     })
 
     const styleDataHandler = () => setIsStyleLoaded(true)
-    const loadHandler = () => setIsLoaded(true)
+    const loadHandler = () => {
+      mapInstance.resize()
+      setIsLoaded(true)
+    }
 
     mapInstance.on('load', loadHandler)
     mapInstance.on('styledata', styleDataHandler)

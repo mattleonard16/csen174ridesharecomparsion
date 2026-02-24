@@ -52,16 +52,10 @@ function MapViewController({
     const bounds = new MapLibreGL.LngLatBounds()
     routeCoordinates.forEach(coord => bounds.extend(coord))
 
-    // Only adjust if route extends beyond current view
-    const currentBounds = map.getBounds()
-    const sw = bounds.getSouthWest()
-    const ne = bounds.getNorthEast()
-    if (currentBounds && (!currentBounds.contains(sw) || !currentBounds.contains(ne))) {
-      map.fitBounds(bounds, {
-        padding: 40,
-        duration: 800,
-      })
-    }
+    map.fitBounds(bounds, {
+      padding: 40,
+      duration: 800,
+    })
   }, [map, isLoaded, routeCoordinates, isRouteLoading])
 
   return null
