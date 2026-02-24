@@ -816,12 +816,10 @@ export default function RideComparisonForm({
             results={results}
             insights={insights}
             surgeInfo={surgeInfo}
-            timeRecommendations={timeRecommendations}
             pickup={pickup}
             destination={destination}
             pickupCoords={pickupCoords}
             destinationCoords={destinationCoords}
-            aiRecommendations={aiRecommendations}
           />
         )}
       </section>
