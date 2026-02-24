@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Hero from '@/components/Hero'
 import RouteList from '@/components/RouteList'
 import FeatureGrid from '@/components/FeatureGrid'
@@ -13,7 +13,7 @@ export default function HomePageClient() {
   } | null>(null)
   const [processingRouteId, setProcessingRouteId] = useState<string | null>(null)
 
-  const handleRouteSelect = (route: { pickup: string; destination: string }) => {
+  const handleRouteSelect = useCallback((route: { pickup: string; destination: string }) => {
     // Find the route ID to show processing state
     const routeMap = {
       'San Francisco International Airport (SFO), San Francisco, CA, USA': 'sfo-downtown',
@@ -25,12 +25,12 @@ export default function HomePageClient() {
     const routeId = routeMap[route.pickup as keyof typeof routeMap]
     setProcessingRouteId(routeId || null)
     setSelectedRoute(route)
-  }
+  }, [])
 
-  const handleRouteProcessed = () => {
+  const handleRouteProcessed = useCallback(() => {
     setSelectedRoute(null)
     setProcessingRouteId(null)
-  }
+  }, [])
 
   return (
     <main className="scroll-snap-y overflow-y-scroll h-screen">

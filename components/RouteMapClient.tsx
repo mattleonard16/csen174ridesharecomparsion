@@ -52,16 +52,10 @@ function MapViewController({
     const bounds = new MapLibreGL.LngLatBounds()
     routeCoordinates.forEach(coord => bounds.extend(coord))
 
-    // Only adjust if route extends beyond current view
-    const currentBounds = map.getBounds()
-    const sw = bounds.getSouthWest()
-    const ne = bounds.getNorthEast()
-    if (currentBounds && (!currentBounds.contains(sw) || !currentBounds.contains(ne))) {
-      map.fitBounds(bounds, {
-        padding: 40,
-        duration: 800,
-      })
-    }
+    map.fitBounds(bounds, {
+      padding: 40,
+      duration: 800,
+    })
   }, [map, isLoaded, routeCoordinates, isRouteLoading])
 
   return null
@@ -72,10 +66,10 @@ function RouteLoadingIndicator({ isLoading }: { isLoading: boolean }) {
   if (!isLoading) return null
 
   return (
-    <div className="absolute top-2 right-2 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg">
+    <div className="absolute top-2 right-2 z-[1000] bg-card/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg border border-border">
       <div className="flex items-center space-x-2">
-        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-medium text-gray-700">Loading route...</span>
+        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-sm font-medium text-foreground">Loading route...</span>
       </div>
     </div>
   )
@@ -215,7 +209,7 @@ const RouteMapClient = ({ pickup, destination }: RouteMapClientProps) => {
   }, [pickup, destination, fetchRoute])
 
   return (
-    <div className="mt-4 relative h-[300px] rounded-lg overflow-hidden">
+    <div className="mt-4 relative h-[300px] rounded-lg overflow-hidden border border-border shadow-md">
       <Map center={center} zoom={10}>
         <MapControls position="bottom-right" showZoom={true} />
 
@@ -262,10 +256,10 @@ const RouteMapClient = ({ pickup, destination }: RouteMapClientProps) => {
 
       {/* Error indicator */}
       {routeError && !isRouteLoading && (
-        <div className="absolute bottom-2 left-2 z-[1000] bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+        <div className="absolute bottom-2 left-2 z-[1000] bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
           <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-            <span className="text-xs text-orange-700">Using direct route</span>
+            <div className="w-2 h-2 bg-destructive rounded-full"></div>
+            <span className="text-xs text-foreground">Using direct route</span>
           </div>
         </div>
       )}

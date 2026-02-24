@@ -25,8 +25,6 @@ export {
 
 export { MapRoute, ROUTE_LAYER_PREFIX, ROUTE_SOURCE_PREFIX } from './map-route'
 
-export { MapClusterLayer } from './map-cluster'
-
 export { MapControls } from './map-controls'
 
 type MapContextValue = {
@@ -45,8 +43,8 @@ function useMap() {
 }
 
 const defaultStyles = {
-  dark: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
-  light: 'https://tiles.stadiamaps.com/styles/osm_bright.json',
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
 }
 
 type MapStyleOption = string | MapLibreGL.StyleSpecification
@@ -101,7 +99,10 @@ function Map({ children, styles, ...props }: MapProps) {
     })
 
     const styleDataHandler = () => setIsStyleLoaded(true)
-    const loadHandler = () => setIsLoaded(true)
+    const loadHandler = () => {
+      mapInstance.resize()
+      setIsLoaded(true)
+    }
 
     mapInstance.on('load', loadHandler)
     mapInstance.on('styledata', styleDataHandler)
@@ -112,8 +113,6 @@ function Map({ children, styles, ...props }: MapProps) {
       mapInstance.off('styledata', styleDataHandler)
       mapInstance.remove()
       mapRef.current = null
-      setIsLoaded(false)
-      setIsStyleLoaded(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

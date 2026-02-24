@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { useTheme } from 'next-themes'
 
 import { motion, useSpring, AnimatePresence } from 'framer-motion'
 
@@ -33,6 +34,30 @@ export const PillBase: React.FC = () => {
 
   const prevSectionRef = useRef('home')
 
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const isDark = mounted && resolvedTheme === 'dark'
+
+  const navColors = useMemo(
+    () => ({
+      activeText: isDark ? '#f0ece0' : '#1a1a1a',
+      inactiveText: isDark ? '#9a9a9a' : '#656565',
+      hoverText: isDark ? '#d0ccc0' : '#3a3a3a',
+    }),
+    [isDark]
+  )
+
+  const pillBackground = isDark
+    ? `linear-gradient(135deg,
+        #1e2433 0%, #1c2230 15%, #1a2030 30%,
+        #181e2d 45%, #161c2a 60%, #141a27 75%,
+        #121824 90%, #131925 100%)`
+    : `linear-gradient(135deg,
+        #fffdf9 0%, #fdfaf5 15%, #faf7f0 30%,
+        #f7f4eb 45%, #f4f1e6 60%, #f1eee1 75%,
+        #eeeadc 90%, #f0ece0 100%)`
+
   const navItems: NavItem[] = useMemo(
     () => [
       { label: 'Home', id: 'home' },
@@ -47,7 +72,12 @@ export const PillBase: React.FC = () => {
 
   const pillWidth = useSpring(140, { stiffness: 220, damping: 25, mass: 1 })
 
-  const pillShift = useSpring(0, { stiffness: 220, damping: 25, mass: 1 })
+  // Cleanup hover timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    }
+  }, [])
 
   // Scroll detection to update active section
   useEffect(() => {
@@ -169,18 +199,7 @@ export const PillBase: React.FC = () => {
 
         height: '56px',
 
-        background: `
-          linear-gradient(135deg,
-            #fffdf9 0%,
-            #fdfaf5 15%,
-            #faf7f0 30%,
-            #f7f4eb 45%,
-            #f4f1e6 60%,
-            #f1eee1 75%,
-            #eeeadc 90%,
-            #f0ece0 100%
-          )
-        `,
+        background: pillBackground,
 
         boxShadow: expanded
           ? `
@@ -249,8 +268,6 @@ export const PillBase: React.FC = () => {
             inset 0 0 1px rgba(0, 0, 0, 0.15)
 
           `,
-
-        x: pillShift,
 
         overflow: 'hidden',
 
@@ -441,19 +458,26 @@ export const PillBase: React.FC = () => {
                   style={{
                     fontSize: '15.5px',
                     fontWeight: 680,
-                    color: '#1a1a1a',
+                    color: navColors.activeText,
                     letterSpacing: '0.45px',
                     whiteSpace: 'nowrap',
                     fontFamily:
                       'var(--font-dm-sans), -apple-system, BlinkMacSystemFont, "SF Pro Display", Poppins, sans-serif',
                     WebkitFontSmoothing: 'antialiased',
                     MozOsxFontSmoothing: 'grayscale',
-                    textShadow: `
-                      0 1px 0 rgba(0, 0, 0, 0.35),
-                      0 -1px 0 rgba(255, 255, 255, 0.8),
-                      1px 1px 0 rgba(0, 0, 0, 0.18),
-                      -1px 1px 0 rgba(0, 0, 0, 0.15)
-                    `,
+                    textShadow: isDark
+                      ? `
+                        0 1px 0 rgba(0, 0, 0, 0.6),
+                        0 -1px 0 rgba(255, 255, 255, 0.1),
+                        1px 1px 0 rgba(0, 0, 0, 0.3),
+                        -1px 1px 0 rgba(0, 0, 0, 0.25)
+                      `
+                      : `
+                        0 1px 0 rgba(0, 0, 0, 0.35),
+                        0 -1px 0 rgba(255, 255, 255, 0.8),
+                        1px 1px 0 rgba(0, 0, 0, 0.18),
+                        -1px 1px 0 rgba(0, 0, 0, 0.15)
+                      `,
                   }}
                 >
                   {activeItem.label}
@@ -490,7 +514,7 @@ export const PillBase: React.FC = () => {
 
                     fontWeight: isActive ? 680 : 510,
 
-                    color: isActive ? '#1a1a1a' : '#656565',
+                    color: isActive ? navColors.activeText : navColors.inactiveText,
 
                     textDecoration: 'none',
 
@@ -516,7 +540,14 @@ export const PillBase: React.FC = () => {
                     transform: isActive ? 'translateY(-1.5px)' : 'translateY(0)',
 
                     textShadow: isActive
-                      ? `
+                      ? isDark
+                        ? `
+                          0 1px 0 rgba(0, 0, 0, 0.6),
+                          0 -1px 0 rgba(255, 255, 255, 0.1),
+                          1px 1px 0 rgba(0, 0, 0, 0.3),
+                          -1px 1px 0 rgba(0, 0, 0, 0.25)
+                        `
+                        : `
 
                         0 1px 0 rgba(0, 0, 0, 0.35),
 
@@ -527,7 +558,14 @@ export const PillBase: React.FC = () => {
                         -1px 1px 0 rgba(0, 0, 0, 0.15)
 
                       `
-                      : `
+                      : isDark
+                        ? `
+                          0 1px 0 rgba(0, 0, 0, 0.4),
+                          0 -1px 0 rgba(255, 255, 255, 0.05),
+                          1px 1px 0 rgba(0, 0, 0, 0.2),
+                          -1px 1px 0 rgba(0, 0, 0, 0.15)
+                        `
+                        : `
 
                         0 1px 0 rgba(0, 0, 0, 0.22),
 
@@ -541,40 +579,44 @@ export const PillBase: React.FC = () => {
                   }}
                   onMouseEnter={e => {
                     if (!isActive) {
-                      e.currentTarget.style.color = '#3a3a3a'
+                      e.currentTarget.style.color = navColors.hoverText
 
                       e.currentTarget.style.transform = 'translateY(-0.5px)'
 
-                      e.currentTarget.style.textShadow = `
-
-                        0 1px 0 rgba(0, 0, 0, 0.28),
-
-                        0 -1px 0 rgba(255, 255, 255, 0.72),
-
-                        1px 1px 0 rgba(0, 0, 0, 0.15),
-
-                        -1px 1px 0 rgba(0, 0, 0, 0.12)
-
-                      `
+                      e.currentTarget.style.textShadow = isDark
+                        ? `
+                          0 1px 0 rgba(0, 0, 0, 0.5),
+                          0 -1px 0 rgba(255, 255, 255, 0.08),
+                          1px 1px 0 rgba(0, 0, 0, 0.25),
+                          -1px 1px 0 rgba(0, 0, 0, 0.2)
+                        `
+                        : `
+                          0 1px 0 rgba(0, 0, 0, 0.28),
+                          0 -1px 0 rgba(255, 255, 255, 0.72),
+                          1px 1px 0 rgba(0, 0, 0, 0.15),
+                          -1px 1px 0 rgba(0, 0, 0, 0.12)
+                        `
                     }
                   }}
                   onMouseLeave={e => {
                     if (!isActive) {
-                      e.currentTarget.style.color = '#656565'
+                      e.currentTarget.style.color = navColors.inactiveText
 
                       e.currentTarget.style.transform = 'translateY(0)'
 
-                      e.currentTarget.style.textShadow = `
-
-                        0 1px 0 rgba(0, 0, 0, 0.22),
-
-                        0 -1px 0 rgba(255, 255, 255, 0.65),
-
-                        1px 1px 0 rgba(0, 0, 0, 0.12),
-
-                        -1px 1px 0 rgba(0, 0, 0, 0.10)
-
-                      `
+                      e.currentTarget.style.textShadow = isDark
+                        ? `
+                          0 1px 0 rgba(0, 0, 0, 0.4),
+                          0 -1px 0 rgba(255, 255, 255, 0.05),
+                          1px 1px 0 rgba(0, 0, 0, 0.2),
+                          -1px 1px 0 rgba(0, 0, 0, 0.15)
+                        `
+                        : `
+                          0 1px 0 rgba(0, 0, 0, 0.22),
+                          0 -1px 0 rgba(255, 255, 255, 0.65),
+                          1px 1px 0 rgba(0, 0, 0, 0.12),
+                          -1px 1px 0 rgba(0, 0, 0, 0.10)
+                        `
                     }
                   }}
                 >

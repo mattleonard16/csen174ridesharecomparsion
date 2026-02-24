@@ -1,10 +1,36 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useTheme } from 'next-themes'
 import { useAuth } from '@/lib/auth-context'
 import { AuthDialog } from '@/components/auth-dialog'
 import ModalPortal from '@/components/ModalPortal'
-import { User, LogOut } from 'lucide-react'
+import { User, LogOut, Sun, Moon } from 'lucide-react'
+
+export function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => setMounted(true), [])
+
+  if (!mounted) {
+    return <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
+  }
+
+  return (
+    <button
+      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+      className="p-2.5 rounded-lg card-interactive text-foreground transition-all duration-200"
+      title={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {resolvedTheme === 'dark' ? (
+        <Sun className="w-4 h-4" />
+      ) : (
+        <Moon className="w-4 h-4" />
+      )}
+    </button>
+  )
+}
 
 export function UserMenu() {
   const { user, signOut, loading } = useAuth()

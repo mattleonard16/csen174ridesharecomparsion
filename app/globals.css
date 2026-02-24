@@ -23,25 +23,6 @@ body {
   animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.animate-enter {
-  animation: fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes slide-in-right {
-  0% {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
 @keyframes pulse-dot {
   0%,
   100% {
@@ -58,64 +39,6 @@ body {
   animation: pulse-dot 2.5s ease-out infinite;
 }
 
-@keyframes ticker-slide {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-50%);
-  }
-}
-
-.animate-ticker {
-  animation: ticker-slide 25s linear infinite;
-}
-
-@keyframes flip-in {
-  0% {
-    transform: rotateX(-90deg);
-    opacity: 0;
-  }
-  100% {
-    transform: rotateX(0deg);
-    opacity: 1;
-  }
-}
-
-.animate-flip-char {
-  display: inline-block;
-  transform-origin: bottom center;
-  animation: flip-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-.animate-float {
-  animation: float 4s ease-in-out infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-.animate-shimmer {
-  animation: shimmer 2s ease-in-out infinite;
-  background-size: 200% 100%;
-}
-
 /* Staggered delays */
 .delay-100 {
   animation-delay: 100ms;
@@ -128,9 +51,6 @@ body {
 }
 .delay-400 {
   animation-delay: 400ms;
-}
-.delay-500 {
-  animation-delay: 500ms;
 }
 
 /* Prefers reduced motion support */
@@ -162,8 +82,8 @@ body {
     background: hsl(var(--card) / 0.8);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid hsl(var(--border) / 0.5);
-    box-shadow: 0 4px 24px hsl(var(--foreground) / 0.05);
+    border: 1px solid hsl(var(--border) / 0.8);
+    box-shadow: 0 4px 24px hsl(var(--foreground) / 0.10);
   }
 
   /* Gradient Mesh Background */
@@ -190,7 +110,7 @@ body {
   .card-elevated {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    box-shadow: 0 4px 16px hsl(var(--foreground) / 0.06);
+    box-shadow: 0 4px 16px hsl(var(--foreground) / 0.12);
   }
 
   /* Interactive Card */
@@ -220,7 +140,7 @@ body {
 
   /* Legacy transit utilities - kept for compatibility */
   .bg-dot-grid {
-    background-image: radial-gradient(hsl(var(--muted-foreground) / 0.2) 1px, transparent 1px);
+    background-image: radial-gradient(hsl(var(--muted-foreground) / 0.35) 1px, transparent 1px);
     background-size: 20px 20px;
   }
 
@@ -272,15 +192,6 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 4px 0 hsl(var(--primary));
     border-color: hsl(var(--primary));
-  }
-
-  .hover-mechanical {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .hover-mechanical:active {
-    transform: translateY(1px);
-    box-shadow: none;
   }
 
   /* === Liquid Luxury Polish === */
@@ -369,7 +280,7 @@ body {
 @layer base {
   :root {
     /* Liquid Luxury Palette - Light Mode */
-    --background: 45 30% 97%; /* warm cream */
+    --background: 45 25% 94%; /* warm cream */
     --foreground: 220 40% 13%; /* deep navy */
     --card: 0 0% 100%;
     --card-foreground: 220 40% 13%;
@@ -383,13 +294,13 @@ body {
     --accent: 340 70% 55%; /* rose */
     --accent-foreground: 0 0% 100%;
 
-    --muted: 45 20% 92%; /* soft beige */
+    --muted: 45 18% 88%; /* soft beige */
     --muted-foreground: 220 20% 45%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 45 15% 85%;
+    --border: 45 15% 78%;
     --input: 45 15% 95%;
     --ring: 220 80% 50%;
 

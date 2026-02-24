@@ -1,6 +1,6 @@
 'use client'
 
-import { UserMenu } from '@/components/user-menu'
+import { UserMenu, ThemeToggle } from '@/components/user-menu'
 import { ArrowRight } from 'lucide-react'
 
 export default function Hero() {
@@ -12,8 +12,9 @@ export default function Hero() {
       {/* Gradient Mesh Background with Noise Texture */}
       <div className="absolute inset-0 gradient-mesh noise-overlay" />
 
-      {/* User menu */}
-      <div className="absolute top-4 right-4 z-10">
+      {/* User menu and theme toggle */}
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <ThemeToggle />
         <UserMenu />
       </div>
 

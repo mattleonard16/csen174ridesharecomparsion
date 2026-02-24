@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from 'next'
 import { Playfair_Display, DM_Sans, Space_Mono } from 'next/font/google'
+import dynamic from 'next/dynamic'
 import './globals.css'
 import { Analytics } from '@vercel/analytics/react'
 import { Providers } from './providers'
-import { PillBase } from '@/components/ui/3d-adaptive-navigation-bar'
+
+const PillBase = dynamic(
+  () => import('@/components/ui/3d-adaptive-navigation-bar').then(m => ({ default: m.PillBase })),
+  { ssr: false }
+)
 
 const playfairDisplay = Playfair_Display({
   subsets: ['latin'],
@@ -53,7 +58,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${playfairDisplay.variable} ${dmSans.variable} ${spaceMono.variable} antialiased font-sans`}
       >

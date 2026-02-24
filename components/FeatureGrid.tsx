@@ -1,5 +1,3 @@
-'use client'
-
 import { Zap, Brain, MapPin, Clock, TrendingDown, Shield } from 'lucide-react'
 
 const FEATURES = [
