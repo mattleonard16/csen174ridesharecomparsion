@@ -73,6 +73,7 @@ function Map({ children, styles, ...props }: MapProps) {
   const mapRef = useRef<MapLibreGL.Map | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [isStyleLoaded, setIsStyleLoaded] = useState(false)
+  const [mapInitError, setMapInitError] = useState(false)
   const { resolvedTheme } = useTheme()
 
   const mapStyles = useMemo(
@@ -88,30 +89,40 @@ function Map({ children, styles, ...props }: MapProps) {
 
     const mapStyle = resolvedTheme === 'dark' ? mapStyles.dark : mapStyles.light
 
-    const mapInstance = new MapLibreGL.Map({
-      container: containerRef.current,
-      style: mapStyle,
-      renderWorldCopies: false,
-      attributionControl: {
-        compact: true,
-      },
-      ...props,
-    })
+    let mapInstance: MapLibreGL.Map | null = null
+
+    try {
+      mapInstance = new MapLibreGL.Map({
+        container: containerRef.current,
+        style: mapStyle,
+        renderWorldCopies: false,
+        attributionControl: {
+          compact: true,
+        },
+        ...props,
+      })
+    } catch {
+      setMapInitError(true)
+      return
+    }
 
     const styleDataHandler = () => setIsStyleLoaded(true)
     const loadHandler = () => {
-      mapInstance.resize()
+      mapInstance!.resize()
       setIsLoaded(true)
     }
+    const errorHandler = () => setMapInitError(true)
 
     mapInstance.on('load', loadHandler)
     mapInstance.on('styledata', styleDataHandler)
+    mapInstance.on('error', errorHandler)
     mapRef.current = mapInstance
 
     return () => {
-      mapInstance.off('load', loadHandler)
-      mapInstance.off('styledata', styleDataHandler)
-      mapInstance.remove()
+      mapInstance!.off('load', loadHandler)
+      mapInstance!.off('styledata', styleDataHandler)
+      mapInstance!.off('error', errorHandler)
+      mapInstance!.remove()
       mapRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,6 +146,17 @@ function Map({ children, styles, ...props }: MapProps) {
     }),
     [isLoaded, isStyleLoaded]
   )
+
+  if (mapInitError) {
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-muted/30 rounded-lg border border-dashed border-border">
+        <div className="text-center text-muted-foreground p-4">
+          <div className="text-sm font-medium mb-1">Map unavailable</div>
+          <div className="text-xs">Route displayed above</div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <MapContext.Provider value={contextValue}>

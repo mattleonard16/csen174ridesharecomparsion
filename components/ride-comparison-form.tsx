@@ -326,6 +326,10 @@ export default function RideComparisonForm({
             currentRequestRef.current = null
             abortControllerRef.current = null
           }
+          // Clear the selected-route state in the parent only after the request
+          // finishes (success or error). Calling onRouteProcessed earlier would
+          // trigger a React cleanup that cancels the submit timeout before it fires.
+          onRouteProcessed?.()
         }
       }
 
@@ -336,9 +340,6 @@ export default function RideComparisonForm({
       )
       const delay = isPrecomputed ? AUTO_SUBMIT_DELAY_PRECOMPUTED_MS : AUTO_SUBMIT_DELAY_DYNAMIC_MS
       const timeoutId = setTimeout(submitForm, delay)
-
-      // Call the callback to clear the selected route
-      onRouteProcessed?.()
 
       // Cleanup: cancel timeout if effect re-runs (e.g., route changes rapidly)
       return () => {

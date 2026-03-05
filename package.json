@@ -19,6 +19,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "demo:vercel": "playwright test --config=playwright.vercel-demo.config.ts --project=vercel-demo",
+    "demo:vercel:headed": "playwright test --config=playwright.vercel-demo.config.ts --project=vercel-demo --headed",
     "fetch:quotes": "tsx scripts/fetch-quotes.ts",
     "seed": "tsx scripts/seed.ts",
     "db:migrate": "prisma migrate dev",
