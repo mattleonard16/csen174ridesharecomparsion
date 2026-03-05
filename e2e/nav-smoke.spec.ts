@@ -37,9 +37,10 @@ test.describe('Navigation Bar Smoke Tests', () => {
     // First expand by hovering
     await nav.hover()
     await expect(nav.locator('button', { hasText: 'Routes' })).toBeVisible({ timeout: 3000 })
-    // Move mouse well away from nav
-    await page.mouse.move(0, 300)
-    // After 600ms timeout + framer-motion exit animation, buttons should disappear
+    // Move hover to the page body to reliably trigger the nav's mouseleave handler
+    await page.locator('body').hover({ position: { x: 5, y: 400 } })
+    // Allow the collapse timeout and exit animation to complete
+    await page.waitForTimeout(900)
     await expect(nav.locator('button', { hasText: 'Routes' })).toBeHidden({ timeout: 5000 })
     // "Home" text should still be visible in collapsed state
     await expect(nav.locator('text=Home')).toBeVisible()

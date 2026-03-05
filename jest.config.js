@@ -16,6 +16,14 @@ const customJestConfig = {
   transformIgnorePatterns: ['/node_modules/(?!(next-auth|@auth|@panva)/)'],
   // Exclude Playwright e2e tests from Jest
   testPathIgnorePatterns: ['/node_modules/', '/e2e/'],
+  modulePathIgnorePatterns: ['<rootDir>/.next/'],
+  collectCoverageFrom: [
+    'app/api/**/*.{ts,tsx}',
+    'lib/services/**/*.{ts,tsx}',
+    'lib/monitoring.ts',
+    '!**/*.d.ts',
+  ],
+  coverageReporters: ['text', 'lcov'],
 }
 
 module.exports = createJestConfig(customJestConfig)

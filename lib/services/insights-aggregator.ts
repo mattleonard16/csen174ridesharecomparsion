@@ -92,9 +92,7 @@ export async function aggregateRouteInsights(
     }
 
     if (bucket.totalCount > 0) {
-      surgeProbabilityByHour[String(h)] = Number(
-        (bucket.surgeCount / bucket.totalCount).toFixed(2)
-      )
+      surgeProbabilityByHour[String(h)] = Number((bucket.surgeCount / bucket.totalCount).toFixed(2))
     }
   }
 
