@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
 
 import { motion, useSpring, AnimatePresence } from 'framer-motion'
@@ -35,8 +35,11 @@ export const PillBase: React.FC = () => {
   const prevSectionRef = useRef('home')
 
   const { resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
   const isDark = mounted && resolvedTheme === 'dark'
 
   const navColors = useMemo(

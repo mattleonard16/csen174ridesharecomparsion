@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/lib/auth-context'
 import { AuthDialog } from '@/components/auth-dialog'
@@ -9,9 +9,11 @@ import { User, LogOut, Sun, Moon } from 'lucide-react'
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => setMounted(true), [])
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
 
   if (!mounted) {
     return <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
@@ -23,11 +25,7 @@ export function ThemeToggle() {
       className="p-2.5 rounded-lg card-interactive text-foreground transition-all duration-200"
       title={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
     >
-      {resolvedTheme === 'dark' ? (
-        <Sun className="w-4 h-4" />
-      ) : (
-        <Moon className="w-4 h-4" />
-      )}
+      {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
     </button>
   )
 }

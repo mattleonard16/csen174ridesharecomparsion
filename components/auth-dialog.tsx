@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { Mail, Check } from 'lucide-react'
 
@@ -16,6 +16,11 @@ export function AuthDialog({ onClose, onSuccess }: AuthDialogProps) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const emailInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    emailInputRef.current?.focus()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,7 +73,9 @@ export function AuthDialog({ onClose, onSuccess }: AuthDialogProps) {
           <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mx-auto mb-2">
             <Mail className="w-6 h-6 text-primary" />
           </div>
-          <h3 className="text-2xl font-bold text-foreground">Sign in to save routes</h3>
+          <h3 id="auth-dialog-title" className="text-2xl font-bold text-foreground">
+            Sign in to save routes
+          </h3>
           <p className="text-muted-foreground">Enter your email and password to continue</p>
         </div>
 
@@ -77,6 +84,7 @@ export function AuthDialog({ onClose, onSuccess }: AuthDialogProps) {
             Email
           </label>
           <input
+            ref={emailInputRef}
             id="email"
             type="email"
             placeholder="you@example.com"
