@@ -25,13 +25,15 @@ export default defineConfig({
         video: 'on',
         launchOptions: {
           slowMo: 700,
+          headless: false,
+          executablePath: process.env.CHROMIUM_PATH,
+          env: {
+            DISPLAY: ':99',
+          },
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            // Enable software WebGL so MapLibre GL renders in headless Chrome
-            '--use-gl=swiftshader',
-            '--enable-webgl',
-            '--ignore-gpu-blacklist',
+            '--disable-dev-shm-usage',
           ],
         },
       },
