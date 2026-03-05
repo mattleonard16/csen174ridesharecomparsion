@@ -1,0 +1,14 @@
+[
+  {
+    "from": "San Francisco International Airport (SFO), San Francisco, CA",
+    "to": "Downtown San Francisco, CA"
+  },
+  {
+    "from": "San Jose International Airport (SJC), San Jose, CA",
+    "to": "Santa Clara University, Santa Clara, CA"
+  },
+  {
+    "from": "Stanford University, Stanford, CA",
+    "to": "Googleplex, Mountain View, CA"
+  }
+]
