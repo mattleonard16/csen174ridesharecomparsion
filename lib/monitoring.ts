@@ -3,6 +3,8 @@
  * Integrates with Sentry for error tracking and Axiom for structured logging
  */
 
+import { prisma } from '@/lib/prisma'
+
 interface LogContext {
   userId?: string
   routeId?: string
@@ -120,22 +122,36 @@ export async function healthCheck() {
     },
   }
 
-  // Determine overall health
-  const hasFailures = Object.values(checks.checks).some(check => !check.healthy)
-  if (hasFailures) {
+  const failedChecks = Object.values(checks.checks).filter(check => !check.healthy).length
+  if (failedChecks === Object.keys(checks.checks).length) {
+    checks.status = 'unhealthy'
+  } else if (failedChecks > 0) {
     checks.status = 'degraded'
   }
 
   return checks
 }
 
-async function checkDatabase(): Promise<{ healthy: boolean; latency?: number }> {
-  // Placeholder - would check Prisma/Neon connection
-  // In production, this should do a simple SELECT 1 query
-  return { healthy: !!process.env.DATABASE_URL, latency: 10 }
+async function checkDatabase(): Promise<{ healthy: boolean; latency?: number; error?: string }> {
+  if (!process.env.DATABASE_URL) {
+    return { healthy: false, error: 'DATABASE_URL is not configured' }
+  }
+
+  const start = Date.now()
+
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1')
+    return { healthy: true, latency: Date.now() - start }
+  } catch (error) {
+    return {
+      healthy: false,
+      latency: Date.now() - start,
+      error: error instanceof Error ? error.message : 'Unknown database error',
+    }
+  }
 }
 
-async function checkOSRM(): Promise<{ healthy: boolean; latency?: number }> {
+async function checkOSRM(): Promise<{ healthy: boolean; latency?: number; error?: string }> {
   const start = Date.now()
   try {
     const response = await fetch(
@@ -143,8 +159,14 @@ async function checkOSRM(): Promise<{ healthy: boolean; latency?: number }> {
       { signal: AbortSignal.timeout(5000) }
     )
     const latency = Date.now() - start
-    return { healthy: response.ok, latency }
+    return response.ok
+      ? { healthy: true, latency }
+      : { healthy: false, latency, error: `OSRM returned ${response.status}` }
   } catch (error) {
-    return { healthy: false }
+    return {
+      healthy: false,
+      latency: Date.now() - start,
+      error: error instanceof Error ? error.message : 'Unknown OSRM error',
+    }
   }
 }
