@@ -267,6 +267,53 @@ describe('/api/compare-rides route', () => {
     expect(payload.pickupCoords).toEqual(comparisonFixture.pickup)
   })
 
+  it('accepts airport-style names in coordinate payloads', async () => {
+    const request = new MockRequest('http://localhost/api/compare-rides', {
+      method: 'POST',
+      body: JSON.stringify({
+        from: {
+          name: 'San Francisco International Airport (SFO)',
+          lat: '37.6213',
+          lng: '-122.3790',
+        },
+        to: {
+          name: 'Union Square, San Francisco, CA',
+          lat: '37.7879',
+          lng: '-122.4074',
+        },
+        services: ['uber', 'lyft'],
+        recaptchaToken: 'token-123',
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    const response = await POST(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(mockCompareRidesByCoordinates).toHaveBeenCalledWith(
+      {
+        name: 'San Francisco International Airport (SFO)',
+        coordinates: [-122.379, 37.6213],
+      },
+      {
+        name: 'Union Square, San Francisco, CA',
+        coordinates: [-122.4074, 37.7879],
+      },
+      ['uber', 'lyft'],
+      expect.any(Date),
+      expect.objectContaining({
+        userId: 'user-123',
+        persist: true,
+        pickupAddress: 'San Francisco International Airport (SFO)',
+        destinationAddress: 'Union Square, San Francisco, CA',
+      })
+    )
+    expect(payload.pickupCoords).toEqual(comparisonFixture.pickup)
+  })
+
   it('uses the address comparison path for legacy payloads', async () => {
     const request = new MockRequest('http://localhost/api/compare-rides', {
       method: 'POST',
