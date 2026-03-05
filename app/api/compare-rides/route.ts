@@ -9,22 +9,25 @@ import {
   sanitizeString,
 } from '@/lib/validation'
 import { verifyRecaptchaToken, RECAPTCHA_CONFIG } from '@/lib/recaptcha'
-import { compareRidesByAddresses } from '@/lib/services/ride-comparison'
+import { compareRidesByAddresses, compareRidesByCoordinates } from '@/lib/services/ride-comparison'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { auth } from '@/auth'
 import { generateRecommendations } from '@/lib/services/recommendations'
 import { enhanceWithAI } from '@/lib/services/ai-insights'
+import type {
+  ComparisonApiResponse,
+  ComparisonRequestBody,
+  CoordinateComparisonRequest,
+  LegacyComparisonRequest,
+  ServiceType,
+} from '@/types'
 
-/**
- * Get or generate a request ID for traceability
- */
+const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
+
 function getRequestId(request: NextRequest): string {
   return request.headers.get('x-request-id') ?? crypto.randomUUID()
 }
 
-/**
- * Create response headers with request ID
- */
 function createResponseHeaders(
   requestId: string,
   additionalHeaders?: Record<string, string>
@@ -32,6 +35,61 @@ function createResponseHeaders(
   return {
     'x-request-id': requestId,
     ...additionalHeaders,
+  }
+}
+
+function normaliseServices(services?: ServiceType[]): ServiceType[] {
+  return services && services.length > 0 ? Array.from(new Set(services)) : DEFAULT_SERVICES
+}
+
+function isLegacyRequest(body: unknown): body is LegacyComparisonRequest {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    typeof (body as LegacyComparisonRequest).pickup === 'string' &&
+    typeof (body as LegacyComparisonRequest).destination === 'string'
+  )
+}
+
+function isCoordinateRequest(body: unknown): body is CoordinateComparisonRequest {
+  return typeof body === 'object' && body !== null && 'from' in body && 'to' in body
+}
+
+function isPrecomputedRequest(body: ComparisonRequestBody): boolean {
+  if (isLegacyRequest(body)) {
+    return !!findPrecomputedRouteByAddresses(body.pickup, body.destination)
+  }
+
+  return !!findPrecomputedRouteByAddresses(body.from.name, body.to.name)
+}
+
+async function resolveAiRecommendations(routeId: string | null, userId?: string | null) {
+  if (!routeId) {
+    return []
+  }
+
+  return generateRecommendations({
+    routeId,
+    userId: userId ?? undefined,
+    timestamp: new Date(),
+  })
+    .then(result => enhanceWithAI(result.recommendations))
+    .catch(() => [])
+}
+
+function buildComparisonResponse(
+  comparisons: Awaited<ReturnType<typeof compareRidesByCoordinates>>,
+  aiRecommendations: Awaited<ReturnType<typeof resolveAiRecommendations>>
+): ComparisonApiResponse {
+  return {
+    routeId: comparisons.routeId,
+    comparisons: comparisons.results,
+    insights: comparisons.insights,
+    pickupCoords: comparisons.pickup,
+    destinationCoords: comparisons.destination,
+    surgeInfo: comparisons.surgeInfo,
+    timeRecommendations: comparisons.timeRecommendations,
+    aiRecommendations,
   }
 }
 
@@ -51,11 +109,10 @@ async function handleGet(request: NextRequest) {
     }
 
     const isPrecomputedRoute = !!findPrecomputedRouteByAddresses(pickup, destination)
-
     const comparisons = await compareRidesByAddresses(
       pickup,
       destination,
-      ['uber', 'lyft', 'taxi', 'waymo'],
+      DEFAULT_SERVICES,
       new Date(),
       {
         userId: null,
@@ -74,35 +131,14 @@ async function handleGet(request: NextRequest) {
     const cacheControl = isPrecomputedRoute
       ? 'private, max-age=300, stale-while-revalidate=1800'
       : 'private, max-age=30, stale-while-revalidate=120'
+    const aiRecommendations = await resolveAiRecommendations(comparisons.routeId)
 
-    // Non-blocking: generate AI recommendations in parallel
-    const aiRecommendations = await generateRecommendations({
-      routeId: comparisons.routeId ?? undefined,
-      timestamp: new Date(),
+    return NextResponse.json(buildComparisonResponse(comparisons, aiRecommendations), {
+      headers: createResponseHeaders(requestId, { 'Cache-Control': cacheControl }),
     })
-      .then(r => enhanceWithAI(r.recommendations))
-      .catch(() => [])
-
-    return NextResponse.json(
-      {
-        routeId: comparisons.routeId,
-        comparisons: comparisons.results,
-        insights: comparisons.insights,
-        pickupCoords: comparisons.pickup,
-        destinationCoords: comparisons.destination,
-        surgeInfo: comparisons.surgeInfo,
-        timeRecommendations: comparisons.timeRecommendations,
-        aiRecommendations,
-      },
-      {
-        headers: createResponseHeaders(requestId, { 'Cache-Control': cacheControl }),
-      }
-    )
   } catch {
     return NextResponse.json(
-      {
-        error: 'Failed to prefetch ride comparisons',
-      },
+      { error: 'Failed to prefetch ride comparisons' },
       { status: 500, headers: createResponseHeaders(requestId) }
     )
   }
@@ -112,16 +148,18 @@ async function handlePost(request: NextRequest) {
   const requestId = getRequestId(request)
 
   try {
-    const body = await request.json()
+    const body = (await request.json()) as ComparisonRequestBody
 
-    const isPrecomputedRoute =
-      body.pickup &&
-      body.destination &&
-      !!findPrecomputedRouteByAddresses(body.pickup, body.destination)
+    if (!isLegacyRequest(body) && !isCoordinateRequest(body)) {
+      return NextResponse.json(
+        { error: 'Invalid input' },
+        { status: 400, headers: createResponseHeaders(requestId) }
+      )
+    }
 
+    const isPrecomputedRoute = isPrecomputedRequest(body)
     const isProduction = process.env.NODE_ENV === 'production'
 
-    // reCAPTCHA verification - fail closed in production
     if (body.recaptchaToken && !isPrecomputedRoute) {
       const recaptchaResult = await verifyRecaptchaToken(
         body.recaptchaToken,
@@ -130,7 +168,6 @@ async function handlePost(request: NextRequest) {
       )
 
       if (!recaptchaResult.success) {
-        // Action mismatch is suspicious - could indicate replay attack
         if (recaptchaResult.error?.includes('Action mismatch')) {
           return NextResponse.json(
             { error: 'Security verification failed. Please refresh and try again.' },
@@ -138,7 +175,6 @@ async function handlePost(request: NextRequest) {
           )
         }
 
-        // Low score indicates likely bot
         if (
           recaptchaResult.score !== undefined &&
           recaptchaResult.score < RECAPTCHA_CONFIG.LENIENT_THRESHOLD
@@ -152,48 +188,33 @@ async function handlePost(request: NextRequest) {
           )
         }
 
-        // For other errors in production, fail closed
         if (isProduction) {
           return NextResponse.json(
             { error: 'Security verification unavailable. Please try again later.' },
             { status: 503, headers: createResponseHeaders(requestId) }
           )
         }
-        // In development, continue without reCAPTCHA
       }
     } else if (!isPrecomputedRoute && !body.recaptchaToken && isProduction) {
-      // In production, require reCAPTCHA token for non-precomputed routes
       return NextResponse.json(
         { error: 'Security token required' },
         { status: 400, headers: createResponseHeaders(requestId) }
       )
     }
 
-    let requestData
-    if (body.pickup && body.destination) {
-      requestData = {
-        from: {
-          name: sanitizeString(body.pickup),
-          lat: '0', // Will be geocoded
-          lng: '0',
-        },
-        to: {
-          name: sanitizeString(body.destination),
-          lat: '0', // Will be geocoded
-          lng: '0',
-        },
-        services: ['uber', 'lyft', 'taxi', 'waymo'], // Default all services
-      }
-    } else {
-      requestData = body
-    }
+    const session = await auth()
+    const authenticatedUserId = session?.user?.id ?? null
+    const sessionId = request.headers.get('x-session-id') ?? undefined
+    const timestamp = new Date()
 
-    const isLegacyRequest = body.pickup && body.destination
-
-    if (!isLegacyRequest) {
+    if (isCoordinateRequest(body) && !isLegacyRequest(body)) {
       const validation = validateInput(
         RideComparisonRequestSchema,
-        requestData,
+        {
+          from: body.from,
+          to: body.to,
+          services: normaliseServices(body.services),
+        },
         'ride comparison request'
       )
 
@@ -210,8 +231,7 @@ async function handlePost(request: NextRequest) {
         )
       }
 
-      requestData = validation.data
-
+      const requestData = validation.data
       const fromName = requestData.from.name
       const toName = requestData.to.name
 
@@ -233,86 +253,62 @@ async function handlePost(request: NextRequest) {
           { status: 400, headers: createResponseHeaders(requestId) }
         )
       }
-    }
 
-    if (isLegacyRequest) {
-      const { pickup, destination } = body
-
-      if (!pickup || !destination) {
-        return NextResponse.json(
-          { error: 'Pickup and destination are required' },
-          { status: 400, headers: createResponseHeaders(requestId) }
-        )
-      }
-
-      // Apply validation to legacy requests (security fix)
-      const sanitizedPickup = sanitizeString(pickup)
-      const sanitizedDestination = sanitizeString(destination)
-
-      if (detectSpamPatterns(sanitizedPickup) || detectSpamPatterns(sanitizedDestination)) {
-        return NextResponse.json(
-          { error: 'Invalid location names detected' },
-          { status: 400, headers: createResponseHeaders(requestId) }
-        )
-      }
-
-      const comparisons = await compareRidesByAddresses(
-        sanitizedPickup,
-        sanitizedDestination,
-        ['uber', 'lyft', 'taxi', 'waymo'],
-        new Date(),
+      const comparisons = await compareRidesByCoordinates(
         {
-          userId: null,
-          sessionId: request.headers.get('x-session-id') ?? undefined,
+          name: requestData.from.name,
+          coordinates: [parseFloat(requestData.from.lng), parseFloat(requestData.from.lat)],
+        },
+        {
+          name: requestData.to.name,
+          coordinates: [parseFloat(requestData.to.lng), parseFloat(requestData.to.lat)],
+        },
+        requestData.services,
+        timestamp,
+        {
+          userId: authenticatedUserId,
+          sessionId,
           persist: true,
+          pickupAddress: requestData.from.name,
+          destinationAddress: requestData.to.name,
         }
       )
 
-      if (!comparisons) {
-        return NextResponse.json(
-          { error: 'Could not compute comparisons' },
-          { status: 500, headers: createResponseHeaders(requestId) }
-        )
-      }
+      const aiRecommendations = await resolveAiRecommendations(
+        comparisons.routeId,
+        authenticatedUserId
+      )
 
-      // Non-blocking: generate AI recommendations
-      const aiRecsLegacy = await generateRecommendations({
-        routeId: comparisons.routeId ?? undefined,
-        timestamp: new Date(),
+      return NextResponse.json(buildComparisonResponse(comparisons, aiRecommendations), {
+        headers: createResponseHeaders(requestId),
       })
-        .then(r => enhanceWithAI(r.recommendations))
-        .catch(() => [])
+    }
 
+    const sanitizedPickup = sanitizeString(body.pickup)
+    const sanitizedDestination = sanitizeString(body.destination)
+
+    if (!sanitizedPickup || !sanitizedDestination) {
       return NextResponse.json(
-        {
-          routeId: comparisons.routeId,
-          comparisons: comparisons.results,
-          insights: comparisons.insights,
-          pickupCoords: comparisons.pickup,
-          destinationCoords: comparisons.destination,
-          surgeInfo: comparisons.surgeInfo,
-          timeRecommendations: comparisons.timeRecommendations,
-          aiRecommendations: aiRecsLegacy,
-        },
-        { headers: createResponseHeaders(requestId) }
+        { error: 'Pickup and destination are required' },
+        { status: 400, headers: createResponseHeaders(requestId) }
       )
     }
 
-    const pickup = requestData.from.name
-    const destination = requestData.to.name
-
-    // SECURITY: Get userId from authenticated session, not from untrusted headers
-    const session = await auth()
-    const authenticatedUserId = session?.user?.id ?? null
+    if (detectSpamPatterns(sanitizedPickup) || detectSpamPatterns(sanitizedDestination)) {
+      return NextResponse.json(
+        { error: 'Invalid location names detected' },
+        { status: 400, headers: createResponseHeaders(requestId) }
+      )
+    }
 
     const comparisons = await compareRidesByAddresses(
-      pickup,
-      destination,
-      requestData.services,
-      new Date(),
+      sanitizedPickup,
+      sanitizedDestination,
+      normaliseServices(body.services),
+      timestamp,
       {
         userId: authenticatedUserId,
-        sessionId: request.headers.get('x-session-id') ?? undefined,
+        sessionId,
         persist: true,
       }
     )
@@ -324,39 +320,22 @@ async function handlePost(request: NextRequest) {
       )
     }
 
-    // Non-blocking: generate AI recommendations
-    const aiRecs = await generateRecommendations({
-      routeId: comparisons.routeId ?? undefined,
-      userId: authenticatedUserId ?? undefined,
-      timestamp: new Date(),
-    })
-      .then(r => enhanceWithAI(r.recommendations))
-      .catch(() => [])
-
-    return NextResponse.json(
-      {
-        routeId: comparisons.routeId,
-        comparisons: comparisons.results,
-        insights: comparisons.insights,
-        pickupCoords: comparisons.pickup,
-        destinationCoords: comparisons.destination,
-        surgeInfo: comparisons.surgeInfo,
-        timeRecommendations: comparisons.timeRecommendations,
-        aiRecommendations: aiRecs,
-      },
-      { headers: createResponseHeaders(requestId) }
+    const aiRecommendations = await resolveAiRecommendations(
+      comparisons.routeId,
+      authenticatedUserId
     )
+
+    return NextResponse.json(buildComparisonResponse(comparisons, aiRecommendations), {
+      headers: createResponseHeaders(requestId),
+    })
   } catch {
     return NextResponse.json(
-      {
-        error: 'Failed to compare rides',
-      },
+      { error: 'Failed to compare rides' },
       { status: 500, headers: createResponseHeaders(requestId) }
     )
   }
 }
 
-// Export CORS-wrapped and rate-limited handlers
 export const GET = withCors(withRateLimit(handleGet))
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(handleGet) // No rate limit on preflight
+export const OPTIONS = withCors(handleGet)

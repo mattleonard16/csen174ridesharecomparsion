@@ -53,20 +53,18 @@ export async function findOrCreateRoute(
       destCoords[0]
     )
 
-    const existingRoute = await prisma.route.findUnique({
-      where: { route_hash: routeHash },
-      select: { id: true },
-    })
-
-    if (existingRoute) {
-      return existingRoute.id
-    }
-
     const pickupGeohash = encodeRouteGeohash(pickupCoords[0], pickupCoords[1])
     const destinationGeohash = encodeRouteGeohash(destCoords[0], destCoords[1])
 
-    const newRoute = await prisma.route.create({
-      data: {
+    const route = await prisma.route.upsert({
+      where: { route_hash: routeHash },
+      update: {
+        pickup_address: pickupAddress,
+        destination_address: destAddress,
+        distance_miles: distance,
+        duration_minutes: duration,
+      },
+      create: {
         pickup_address: pickupAddress,
         pickup_lat: pickupCoords[1],
         pickup_lng: pickupCoords[0],
@@ -83,7 +81,7 @@ export async function findOrCreateRoute(
       select: { id: true },
     })
 
-    return newRoute.id
+    return route.id
   } catch (error) {
     reportPersistenceError('findOrCreateRoute', error)
     return null

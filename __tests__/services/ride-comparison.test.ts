@@ -272,6 +272,22 @@ describe('ride-comparison service', () => {
 
       expect(Object.keys(result.results)).toEqual(['uber'])
     })
+
+    it('persists route distance in miles rather than kilometers', async () => {
+      const { findOrCreateRoute } = jest.requireMock('@/lib/database') as {
+        findOrCreateRoute: jest.Mock
+      }
+
+      await compareRidesByCoordinates(
+        { name: 'Pickup', coordinates: pickupCoords },
+        { name: 'Destination', coordinates: destCoords },
+        ['uber']
+      )
+
+      expect(findOrCreateRoute).toHaveBeenCalled()
+      const distanceArgument = findOrCreateRoute.mock.calls[0][4] as number
+      expect(distanceArgument).toBeCloseTo(3.106855, 5)
+    })
   })
 
   describe('caching behavior', () => {

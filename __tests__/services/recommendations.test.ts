@@ -31,7 +31,9 @@ const mockGetOrComputeInsights = getOrComputeInsights as jest.MockedFunction<
 >
 
 // Sample insights fixture
-function createInsights(overrides: Partial<Awaited<ReturnType<typeof getOrComputeInsights>> & {}> = {}) {
+function createInsights(
+  overrides: Partial<Awaited<ReturnType<typeof getOrComputeInsights>> & {}> = {}
+) {
   return {
     cheapestHour: 14,
     cheapestAvgPrice: 12.5,
@@ -135,7 +137,10 @@ describe('Recommendation Engine', () => {
 
       // No data-driven departure rec (with potentialSavings) should exist
       const dataDrivenDepartureRec = result.recommendations.find(
-        r => r.type === 'DEPARTURE_TIME' && r.dataPoints.potentialSavings !== undefined && r.dataPoints.potentialSavings > 0
+        r =>
+          r.type === 'DEPARTURE_TIME' &&
+          r.dataPoints.potentialSavings !== undefined &&
+          r.dataPoints.potentialSavings > 0
       )
       expect(dataDrivenDepartureRec).toBeUndefined()
     })
@@ -269,6 +274,67 @@ describe('Recommendation Engine', () => {
       expect(result1).toEqual(result2)
       // getOrComputeInsights should only be called once (4 services)
       expect(mockGetOrComputeInsights).toHaveBeenCalledTimes(4)
+    })
+
+    it('does not share cached user-specific recommendations across users', async () => {
+      const { prisma } = jest.requireMock('@/lib/prisma') as {
+        prisma: { recommendationAction: { findMany: jest.Mock } }
+      }
+
+      prisma.recommendationAction.findMany
+        .mockResolvedValueOnce([{ estimatedSavings: 12 }])
+        .mockResolvedValueOnce([{ estimatedSavings: 28 }])
+
+      const userOne = await generateRecommendations({
+        userId: 'user-one',
+        timestamp: new Date('2025-06-15T10:00:00'),
+      })
+
+      const userTwo = await generateRecommendations({
+        userId: 'user-two',
+        timestamp: new Date('2025-06-15T10:00:00'),
+      })
+
+      expect(userOne.recommendations[0].message).toContain('$12.00')
+      expect(userTwo.recommendations[0].message).toContain('$28.00')
+      expect(prisma.recommendationAction.findMany).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not reuse cached recommendations across different current services', async () => {
+      const uberInsights = createInsights({
+        avgPriceByHour: { '8': 22.0, '14': 18.0, '17': 20.0 },
+      })
+      const lyftInsights = createInsights({
+        avgPriceByHour: { '8': 14.0, '14': 10.0, '17': 12.0 },
+      })
+
+      mockGetOrComputeInsights
+        .mockResolvedValueOnce(uberInsights)
+        .mockResolvedValueOnce(lyftInsights)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(uberInsights)
+        .mockResolvedValueOnce(lyftInsights)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+
+      const timestamp = new Date('2025-06-15T08:00:00')
+
+      const forUber = await generateRecommendations({
+        routeId: 'service-cache-route',
+        currentService: 'uber',
+        timestamp,
+      })
+
+      const forLyft = await generateRecommendations({
+        routeId: 'service-cache-route',
+        currentService: 'lyft',
+        timestamp,
+      })
+
+      expect(forUber.recommendations.find(r => r.type === 'SERVICE_CHOICE')).toBeDefined()
+      expect(forLyft.recommendations.find(r => r.type === 'SERVICE_CHOICE')).toBeUndefined()
+      expect(mockGetOrComputeInsights).toHaveBeenCalledTimes(8)
     })
   })
 })

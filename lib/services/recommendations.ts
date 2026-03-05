@@ -16,6 +16,7 @@ import type { AIRecommendation } from '@/types'
 const REC_CACHE = new Map<string, { value: RecommendationOutput; expiresAt: number }>()
 const REC_CACHE_TTL_MS = 15 * 60 * 1000 // 15 minutes
 const MAX_REC_CACHE_SIZE = 500
+const RECOMMENDATION_CACHE_VERSION = 'v2'
 
 function cleanupExpiredEntries<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
   const now = Date.now()
@@ -235,9 +236,23 @@ function getFallbackRecommendations(timestamp: Date): AIRecommendation[] {
   ]
 }
 
-function getCacheKey(routeId?: string, hour?: number): string {
-  const hourBlock = hour !== undefined ? Math.floor(hour / 2) : 0
-  return `rec:${routeId ?? 'general'}:${hourBlock}`
+function getCacheKey(input: RecommendationInput, timestamp: Date): string {
+  const hourBlock = Math.floor(timestamp.getHours() / 2)
+  const dayType = timestamp.getDay() === 0 || timestamp.getDay() === 6 ? 'weekend' : 'weekday'
+  const serviceKey = input.currentService?.toLowerCase() ?? 'default'
+  const surgeKey = input.currentPrice !== undefined ? 'surge-context' : 'no-surge-context'
+  const userKey = input.userId ?? 'anon'
+
+  return [
+    'rec',
+    RECOMMENDATION_CACHE_VERSION,
+    input.routeId ?? 'general',
+    dayType,
+    hourBlock,
+    serviceKey,
+    surgeKey,
+    userKey,
+  ].join(':')
 }
 
 /**
@@ -250,7 +265,7 @@ export async function generateRecommendations(
   const currentHour = timestamp.getHours()
 
   // Check cache
-  const cacheKey = getCacheKey(input.routeId, currentHour)
+  const cacheKey = getCacheKey(input, timestamp)
   const cached = REC_CACHE.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value
@@ -279,7 +294,8 @@ export async function generateRecommendations(
 
       // Use current service's insights for time/surge recs, or first available
       const currentServiceKey = input.currentService?.toLowerCase() ?? 'uber'
-      const primaryInsights = insightsMap.get(currentServiceKey) ?? insightsMap.values().next().value
+      const primaryInsights =
+        insightsMap.get(currentServiceKey) ?? insightsMap.values().next().value
 
       if (primaryInsights) {
         // Departure time recommendation
