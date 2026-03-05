@@ -10,13 +10,14 @@ import {
   BarChart3,
   Sparkles,
 } from 'lucide-react'
-import { useState, memo, useMemo, useCallback, useEffect } from 'react'
+import { useState, memo, useMemo, useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import PriceAlert from './price-alert'
 import { useAuth } from '@/lib/auth-context'
-import { saveRouteForUser } from '@/lib/database'
 import { AuthDialog } from './auth-dialog'
 import ModalPortal from './ModalPortal'
+import RecommendationsPanel from './recommendations-panel'
+import type { AIRecommendation } from '@/types'
 
 type RideData = {
   price: string
@@ -26,12 +27,7 @@ type RideData = {
   surgeMultiplier?: string
 }
 
-type Results = {
-  uber: RideData
-  lyft: RideData
-  taxi: RideData
-  waymo?: RideData
-}
+type Results = Partial<Record<ServiceType, RideData>>
 
 type ServiceType = 'uber' | 'lyft' | 'taxi' | 'waymo'
 
@@ -74,6 +70,8 @@ type RideComparisonResultsProps = {
   pickupCoords?: [number, number] | null
   destinationCoords?: [number, number] | null
   historicalStats?: Partial<Record<ServiceType, RouteClusterStats | null>>
+  timeRecommendations?: string[]
+  aiRecommendations?: AIRecommendation[]
 }
 
 export default memo(function RideComparisonResults({
@@ -86,6 +84,8 @@ export default memo(function RideComparisonResults({
   pickupCoords = null,
   destinationCoords = null,
   historicalStats,
+  timeRecommendations = [],
+  aiRecommendations = [],
 }: RideComparisonResultsProps) {
   const { user } = useAuth()
   const [showPriceAlert, setShowPriceAlert] = useState(false)
@@ -96,6 +96,21 @@ export default memo(function RideComparisonResults({
   type AiInsightState = 'idle' | 'loading' | 'success' | 'rate-limited' | 'error'
   const [aiInsightState, setAiInsightState] = useState<AiInsightState>('idle')
   const [aiInsight, setAiInsight] = useState('')
+  const viewedRecommendationIdsRef = useRef<Set<string>>(new Set())
+
+  const routeRecommendations = useMemo(() => {
+    if (aiRecommendations.length > 0) {
+      return aiRecommendations
+    }
+
+    return timeRecommendations.map<AIRecommendation>((message, index) => ({
+      type: 'DEPARTURE_TIME' as const,
+      title: index === 0 ? 'Timing Tip' : `Timing Tip ${index + 1}`,
+      message,
+      confidence: 0.4,
+      dataPoints: {},
+    }))
+  }, [aiRecommendations, timeRecommendations])
 
   useEffect(() => {
     if (!pickup || !destination) return
@@ -131,28 +146,59 @@ export default memo(function RideComparisonResults({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (!showAuthDialog) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setShowAuthDialog(false)
+      }
+    }
+
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showAuthDialog])
+
   // Memoize services array first (used by handlers below)
   const services = useMemo(
     () => [
-      {
-        name: 'Uber',
-        data: results.uber,
-        bgColor: 'bg-black',
-        textColor: 'text-foreground',
-      },
-      {
-        name: 'Lyft',
-        data: results.lyft,
-        bgColor: 'bg-pink-600',
-        textColor: 'text-foreground',
-      },
-      {
-        name: 'Taxi',
-        data: results.taxi,
-        bgColor: 'bg-amber-500',
-        textColor: 'text-black',
-      },
-      // Waymo is conditionally included when available (within service area)
+      ...(results.uber
+        ? [
+            {
+              name: 'Uber',
+              data: results.uber,
+              bgColor: 'bg-black',
+              textColor: 'text-foreground',
+            },
+          ]
+        : []),
+      ...(results.lyft
+        ? [
+            {
+              name: 'Lyft',
+              data: results.lyft,
+              bgColor: 'bg-pink-600',
+              textColor: 'text-foreground',
+            },
+          ]
+        : []),
+      ...(results.taxi
+        ? [
+            {
+              name: 'Taxi',
+              data: results.taxi,
+              bgColor: 'bg-amber-500',
+              textColor: 'text-black',
+            },
+          ]
+        : []),
       ...(results.waymo
         ? [
             {
@@ -293,12 +339,51 @@ export default memo(function RideComparisonResults({
 
     const nickname = `${pickup?.split(',')[0] || 'Pickup'} → ${destination?.split(',')[0] || 'Destination'}`
 
-    const success = await saveRouteForUser(user.id, routeId, nickname)
-    if (success) {
+    try {
+      const response = await fetch('/api/saved-routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeId, nickname }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save route')
+      }
+
       setRouteSaved(true)
       setTimeout(() => setRouteSaved(false), 3000)
+    } catch {
+      toast.error('Failed to save this route. Please try again.')
     }
   }, [user, routeId, pickup, destination])
+
+  const handleRecommendationAction = useCallback(
+    async (
+      recommendationId: string,
+      action: 'VIEWED' | 'CLICKED' | 'FOLLOWED' | 'DISMISSED',
+      estimatedSavings?: number
+    ) => {
+      try {
+        await fetch('/api/recommendations/actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recommendationId, action, estimatedSavings }),
+        })
+      } catch {
+        // Recommendation tracking should never block the core compare experience.
+      }
+    },
+    []
+  )
+
+  useEffect(() => {
+    routeRecommendations.forEach(rec => {
+      if (rec.id && !viewedRecommendationIdsRef.current.has(rec.id)) {
+        viewedRecommendationIdsRef.current.add(rec.id)
+        void handleRecommendationAction(rec.id, 'VIEWED', rec.dataPoints.potentialSavings)
+      }
+    })
+  }, [routeRecommendations, handleRecommendationAction])
 
   const handleSetPriceAlert = useCallback(
     async (threshold: number) => {
@@ -499,13 +584,29 @@ export default memo(function RideComparisonResults({
       </div>
 
       {/* AI Recommendation Card (with rule-based fallback) */}
+      {routeRecommendations.length > 0 && (
+        <RecommendationsPanel
+          recommendations={routeRecommendations}
+          onAction={(recommendationId, action) => {
+            const recommendation = routeRecommendations.find(rec => rec.id === recommendationId)
+            void handleRecommendationAction(
+              recommendationId,
+              action,
+              recommendation?.dataPoints.potentialSavings
+            )
+          }}
+        />
+      )}
+
       {aiInsightState === 'loading' && (
         <div className="card-elevated rounded-2xl border border-border/50 bg-gradient-to-r from-violet-500/5 to-blue-500/5 p-5 animate-pulse">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 bg-violet-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
               <Sparkles className="h-4 w-4 text-violet-400" />
             </div>
-            <span className="text-sm font-medium text-muted-foreground">Analyzing your options…</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              Analyzing your options…
+            </span>
           </div>
           <div className="space-y-2">
             <div className="h-3 bg-muted/40 rounded w-full" />
@@ -808,8 +909,18 @@ export default memo(function RideComparisonResults({
       {/* Auth Dialog */}
       {showAuthDialog && (
         <ModalPortal>
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-            <div className="relative z-[10000] w-full max-w-md glass-card rounded-2xl overflow-hidden">
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            role="presentation"
+            onClick={() => setShowAuthDialog(false)}
+          >
+            <div
+              className="relative z-[10000] w-full max-w-md glass-card rounded-2xl overflow-hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="auth-dialog-title"
+              onClick={event => event.stopPropagation()}
+            >
               <AuthDialog
                 onClose={() => setShowAuthDialog(false)}
                 onSuccess={() => setShowAuthDialog(false)}

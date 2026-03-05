@@ -14,6 +14,23 @@ jest.mock('@/lib/auth-context', () => ({
   }),
 }))
 
+jest.mock('@/lib/hooks/use-recaptcha', () => ({
+  useRecaptcha: () => ({
+    executeRecaptcha: jest.fn(async () => ''),
+    isLoaded: true,
+    error: null,
+  }),
+}))
+
+jest.mock('@/lib/hooks/useUserLocation', () => ({
+  useUserLocation: () => ({
+    getLocation: jest.fn(),
+    isGettingLocation: false,
+    error: null,
+    clearError: jest.fn(),
+  }),
+}))
+
 describe('RideComparisonForm', () => {
   it('renders the form with all required elements', () => {
     render(<RideComparisonForm />)
@@ -40,7 +57,7 @@ describe('RideComparisonForm', () => {
     expect(screen.getByText(/comparing prices/i)).toBeInTheDocument()
   })
 
-  it('handles form submission and shows results', async () => {
+  it('handles form submission failures without falling back to fake pricing', async () => {
     // Mock fetch to simulate API failure
     global.fetch = jest.fn().mockRejectedValue(new Error('API Error'))
 
@@ -56,7 +73,7 @@ describe('RideComparisonForm', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/note: using simulated data due to api connection issues/i)
+        screen.getByText(/failed to fetch ride comparisons\. please try again\./i)
       ).toBeInTheDocument()
     })
   })
@@ -145,7 +162,7 @@ describe('RideComparisonForm', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/note: using simulated data due to api connection issues/i)
+        screen.getByText(/failed to fetch ride comparisons\. please try again\./i)
       ).toBeInTheDocument()
     })
   })

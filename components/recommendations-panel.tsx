@@ -4,7 +4,10 @@ import type { AIRecommendation } from '@/types'
 
 interface RecommendationsPanelProps {
   recommendations: AIRecommendation[]
-  onAction?: (recommendationId: string, action: 'VIEWED' | 'CLICKED' | 'FOLLOWED' | 'DISMISSED') => void
+  onAction?: (
+    recommendationId: string,
+    action: 'VIEWED' | 'CLICKED' | 'FOLLOWED' | 'DISMISSED'
+  ) => void
 }
 
 function getIcon(type: AIRecommendation['type']) {
