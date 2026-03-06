@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { Loader2, Locate, Shield, Plane, ArrowRight } from 'lucide-react'
 import RideComparisonResults from './ride-comparison-results'
@@ -20,10 +20,11 @@ import { LocationInput } from './location-input'
 import { AirportSelector } from './airport-selector'
 import { useRecaptcha } from '@/lib/hooks/use-recaptcha'
 import { useUserLocation } from '@/lib/hooks/useUserLocation'
+import { useRideComparison } from '@/lib/hooks/useRideComparison'
 import { RECAPTCHA_CONFIG } from '@/lib/recaptcha'
 import { getAirportByCode } from '@/lib/airports'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
-import type { LocationSuggestion, CommonPlaces, Coordinates, AIRecommendation } from '@/types'
+import type { LocationSuggestion, CommonPlaces, Coordinates } from '@/types'
 
 // Common places for faster autocomplete
 const COMMON_PLACES: CommonPlaces = {
@@ -147,28 +148,6 @@ const COMMON_PLACES: CommonPlaces = {
 const AUTO_SUBMIT_DELAY_PRECOMPUTED_MS = 0 // Instant submit for precomputed routes
 const AUTO_SUBMIT_DELAY_DYNAMIC_MS = 50 // Minimal delay for dynamic routes
 
-// Type definitions
-type RideService = {
-  price: string
-  waitTime: string
-  driversNearby: number
-  service: string
-  surgeMultiplier?: string
-}
-
-type RideResults = {
-  uber: RideService
-  lyft: RideService
-  taxi: RideService
-  waymo?: RideService
-}
-
-type SurgeInfo = {
-  isActive: boolean
-  reason: string
-  multiplier: number
-}
-
 interface RideComparisonFormProps {
   selectedRoute?: {
     pickup: string
@@ -181,155 +160,56 @@ export default function RideComparisonForm({
   selectedRoute,
   onRouteProcessed,
 }: RideComparisonFormProps) {
-  // reCAPTCHA integration
   const { executeRecaptcha, isLoaded: isRecaptchaLoaded, error: recaptchaError } = useRecaptcha()
-
-  // User location hook
   const { getLocation, isGettingLocation, error: locationError } = useUserLocation()
+  const {
+    data,
+    error: comparisonError,
+    isLoading,
+    isRefreshing,
+    clearError: clearComparisonError,
+    reset: resetComparison,
+    submitComparison,
+  } = useRideComparison()
 
-  // Form state
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const [showForm, setShowForm] = useState(true)
-
-  // Loading states
-  const [isLoading, setIsLoading] = useState(false)
-
-  // Results state
-  const [results, setResults] = useState<RideResults | null>(null)
-  const [routeId, setRouteId] = useState<string | null>(null)
-  const [insights, setInsights] = useState('')
-  const [error, setError] = useState('')
-  const [surgeInfo, setSurgeInfo] = useState<SurgeInfo | null>(null)
-  const [timeRecommendations, setTimeRecommendations] = useState<string[]>([])
-  const [aiRecommendations, setAiRecommendations] = useState<AIRecommendation[]>([])
-
-  // Location state
   const [pickupCoords, setPickupCoords] = useState<Coordinates | null>(null)
   const [destinationCoords, setDestinationCoords] = useState<Coordinates | null>(null)
-
-  // Airport selector state
   const [showAirportSelector, setShowAirportSelector] = useState(false)
   const [airportSelectorMode, setAirportSelectorMode] = useState<'pickup' | 'destination'>('pickup')
+  const [localError, setLocalError] = useState('')
 
-  // Request deduplication - track in-flight request to prevent duplicate submissions
-  const currentRequestRef = useRef<string | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
-
-  // Refs for reCAPTCHA to avoid dependency changes triggering effect re-runs
-  const isRecaptchaLoadedRef = useRef(isRecaptchaLoaded)
-  const executeRecaptchaRef = useRef(executeRecaptcha)
-
-  // Keep refs in sync with reCAPTCHA state
-  useEffect(() => {
-    isRecaptchaLoadedRef.current = isRecaptchaLoaded
-    executeRecaptchaRef.current = executeRecaptcha
-  }, [isRecaptchaLoaded, executeRecaptcha])
-
-  // Handle location error from hook
-  useEffect(() => {
-    if (locationError) {
-      setError(locationError)
+  const getRecaptchaToken = useCallback(async () => {
+    if (!isRecaptchaLoaded) {
+      return ''
     }
-  }, [locationError])
 
-  // Handle popular route selection
-  // Uses refs for reCAPTCHA to prevent race conditions from dependency changes
+    return executeRecaptcha(RECAPTCHA_CONFIG.ACTIONS.RIDE_COMPARISON)
+  }, [executeRecaptcha, isRecaptchaLoaded])
+
   useEffect(() => {
     if (selectedRoute) {
-      setPickup(selectedRoute.pickup)
-      setDestination(selectedRoute.destination)
-      setShowForm(true) // Ensure form is visible
-
-      // Auto-submit the form after setting the values
       const submitForm = async () => {
-        // Request deduplication for auto-submit
-        const requestKey = `${selectedRoute.pickup}-${selectedRoute.destination}`
-
-        // If this exact request is already in flight, ignore
-        if (currentRequestRef.current === requestKey) {
-          return
-        }
-
-        // Abort any previous request
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort()
-        }
-
-        const abortController = new AbortController()
-        abortControllerRef.current = abortController
-        currentRequestRef.current = requestKey
-
-        setIsLoading(true)
-        setResults(null)
-        setRouteId(null)
-        setInsights('')
-        setError('')
+        setPickup(selectedRoute.pickup)
+        setDestination(selectedRoute.destination)
         setPickupCoords(null)
         setDestinationCoords(null)
+        setShowForm(true)
+        setLocalError('')
+        clearComparisonError()
+        const wasSuccessful = await submitComparison({
+          pickup: selectedRoute.pickup,
+          destination: selectedRoute.destination,
+          getRecaptchaToken,
+        })
 
-        try {
-          // Get reCAPTCHA token using refs (access latest values without deps)
-          let recaptchaToken = ''
-          if (isRecaptchaLoadedRef.current) {
-            try {
-              recaptchaToken = await executeRecaptchaRef.current(
-                RECAPTCHA_CONFIG.ACTIONS.RIDE_COMPARISON
-              )
-            } catch {
-              // Continue without token if reCAPTCHA fails
-            }
-          }
-
-          const response = await fetch('/api/compare-rides', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              pickup: selectedRoute.pickup,
-              destination: selectedRoute.destination,
-              recaptchaToken,
-            }),
-            signal: abortController.signal,
-          }).catch(fetchError => {
-            if (fetchError.name === 'AbortError') {
-              return null
-            }
-            throw fetchError
-          })
-
-          // If request was aborted, exit early
-          if (!response) return
-
-          const data = await response.json()
-
-          if (!response.ok) {
-            setError('Failed to fetch ride comparisons for this route. Please try again.')
-            return
-          }
-
-          setResults(data.comparisons)
-          setRouteId(data.routeId || null)
-          setInsights(data.insights)
-          setPickupCoords(data.pickupCoords)
-          setDestinationCoords(data.destinationCoords)
-          setSurgeInfo(data.surgeInfo || null)
-          setTimeRecommendations(data.timeRecommendations || [])
-          setAiRecommendations(data.aiRecommendations || [])
+        if (wasSuccessful) {
           setShowForm(false)
-        } catch {
-          setError('Failed to get pricing for this route. Please try again.')
-        } finally {
-          setIsLoading(false)
-          if (currentRequestRef.current === requestKey) {
-            currentRequestRef.current = null
-            abortControllerRef.current = null
-          }
         }
       }
 
-      // Check if route is precomputed - submit instantly if so, minimal delay otherwise
       const isPrecomputed = findPrecomputedRouteByAddresses(
         selectedRoute.pickup,
         selectedRoute.destination
@@ -337,31 +217,54 @@ export default function RideComparisonForm({
       const delay = isPrecomputed ? AUTO_SUBMIT_DELAY_PRECOMPUTED_MS : AUTO_SUBMIT_DELAY_DYNAMIC_MS
       const timeoutId = setTimeout(submitForm, delay)
 
-      // Call the callback to clear the selected route
       onRouteProcessed?.()
 
-      // Cleanup: cancel timeout if effect re-runs (e.g., route changes rapidly)
       return () => {
         clearTimeout(timeoutId)
       }
     }
-  }, [selectedRoute, onRouteProcessed])
+  }, [selectedRoute, onRouteProcessed, submitComparison, getRecaptchaToken, clearComparisonError])
 
-  // Handle pickup suggestion selection
-  const handlePickupSelect = useCallback((suggestion: LocationSuggestion) => {
-    setPickup(suggestion.display_name)
-    // Immediately update coordinates for instant map response
-    setPickupCoords([parseFloat(suggestion.lon), parseFloat(suggestion.lat)])
-  }, [])
+  const handlePickupChange = useCallback(
+    (value: string) => {
+      setPickup(value)
+      setPickupCoords(null)
+      setLocalError('')
+      clearComparisonError()
+    },
+    [clearComparisonError]
+  )
 
-  // Handle destination suggestion selection
-  const handleDestinationSelect = useCallback((suggestion: LocationSuggestion) => {
-    setDestination(suggestion.display_name)
-    // Immediately update coordinates for instant map response
-    setDestinationCoords([parseFloat(suggestion.lon), parseFloat(suggestion.lat)])
-  }, [])
+  const handleDestinationChange = useCallback(
+    (value: string) => {
+      setDestination(value)
+      setDestinationCoords(null)
+      setLocalError('')
+      clearComparisonError()
+    },
+    [clearComparisonError]
+  )
 
-  // Airport selector handlers
+  const handlePickupSelect = useCallback(
+    (suggestion: LocationSuggestion) => {
+      setPickup(suggestion.display_name)
+      setPickupCoords([parseFloat(suggestion.lon), parseFloat(suggestion.lat)])
+      setLocalError('')
+      clearComparisonError()
+    },
+    [clearComparisonError]
+  )
+
+  const handleDestinationSelect = useCallback(
+    (suggestion: LocationSuggestion) => {
+      setDestination(suggestion.display_name)
+      setDestinationCoords([parseFloat(suggestion.lon), parseFloat(suggestion.lat)])
+      setLocalError('')
+      clearComparisonError()
+    },
+    [clearComparisonError]
+  )
+
   const handleAirportSelect = useCallback(
     (airportCode: string, airportName: string) => {
       const airportString = `${airportName} (${airportCode})`
@@ -387,8 +290,10 @@ export default function RideComparisonForm({
       }
 
       setShowAirportSelector(false)
+      setLocalError('')
+      clearComparisonError()
     },
-    [airportSelectorMode]
+    [airportSelectorMode, clearComparisonError]
   )
 
   const openAirportSelector = useCallback((mode: 'pickup' | 'destination') => {
@@ -398,144 +303,32 @@ export default function RideComparisonForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setLocalError('')
+    clearComparisonError()
 
-    // Request deduplication - create a unique key for this request
-    const requestKey = `${pickup}-${destination}`
+    const wasSuccessful = await submitComparison({
+      pickup,
+      destination,
+      pickupCoords,
+      destinationCoords,
+      getRecaptchaToken,
+    })
 
-    // If this exact request is already in flight, ignore the duplicate
-    if (currentRequestRef.current === requestKey && isLoading) {
-      return
-    }
-
-    // Abort any previous in-flight request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-
-    // Create new abort controller for this request
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
-    currentRequestRef.current = requestKey
-
-    setIsLoading(true)
-    setResults(null)
-    setRouteId(null)
-    setInsights('')
-    setError('')
-    // Clear coordinates when starting a new search
-    setPickupCoords(null)
-    setDestinationCoords(null)
-
-    try {
-      // Execute reCAPTCHA v3 (invisible, no user interaction required)
-      let recaptchaToken = ''
-      if (isRecaptchaLoaded) {
-        try {
-          recaptchaToken = await executeRecaptcha(RECAPTCHA_CONFIG.ACTIONS.RIDE_COMPARISON)
-        } catch {
-          // Continue without reCAPTCHA token - the server will handle this gracefully
-        }
-      }
-
-      const response = await fetch('/api/compare-rides', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          pickup,
-          destination,
-          recaptchaToken, // Include reCAPTCHA token if available
-        }),
-        signal: abortController.signal,
-      }).catch(fetchError => {
-        // Don't throw on abort
-        if (fetchError.name === 'AbortError') {
-          return null
-        }
-        throw new Error('Network error')
-      })
-
-      // If request was aborted, exit early
-      if (!response) return
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (data.error && data.error.includes('geocode')) {
-          setError('Please enter a more specific or valid address for both pickup and destination.')
-        } else if (data.error && data.error.includes('required')) {
-          setError('Both pickup and destination addresses are required.')
-        } else {
-          setError('Failed to fetch ride comparisons. Please try again.')
-        }
-        // Don't set coordinates on error - they should remain null
-        return
-      }
-
-      setResults(data.comparisons)
-      setRouteId(data.routeId || null)
-      setInsights(data.insights)
-      setPickupCoords(data.pickupCoords)
-      setDestinationCoords(data.destinationCoords)
-      setSurgeInfo(data.surgeInfo || null)
-      setTimeRecommendations(data.timeRecommendations || [])
-      setAiRecommendations(data.aiRecommendations || [])
+    if (wasSuccessful) {
       setShowForm(false)
-    } catch {
-      // Fallback to simulated data for demo purposes
-      const basePrice = 15 + Math.random() * 10
-      const baseWaitTime = 2 + Math.floor(Math.random() * 5)
-
-      const simulatedResults = {
-        uber: {
-          price: `$${(basePrice * 1.05).toFixed(2)}`,
-          waitTime: `${baseWaitTime} min`,
-          driversNearby: Math.floor(3 + Math.random() * 5),
-          service: 'UberX',
-        },
-        lyft: {
-          price: `$${(basePrice * 0.95).toFixed(2)}`,
-          waitTime: `${baseWaitTime + 1} min`,
-          driversNearby: Math.floor(2 + Math.random() * 4),
-          service: 'Lyft Standard',
-        },
-        taxi: {
-          price: `$${(basePrice * 1.2).toFixed(2)}`,
-          waitTime: `${baseWaitTime + 3} min`,
-          driversNearby: Math.floor(1 + Math.random() * 3),
-          service: 'Yellow Cab',
-        },
-      }
-
-      setResults(simulatedResults)
-      setRouteId(null) // Simulated data has no real route
-      setAiRecommendations([])
-      setInsights(
-        'Based on price and wait time, Lyft appears to be your best option for this trip.'
-      )
-      setError('Note: Using simulated data due to API connection issues.')
-      setShowForm(false)
-    } finally {
-      setIsLoading(false)
-      // Clear request tracking
-      if (currentRequestRef.current === requestKey) {
-        currentRequestRef.current = null
-        abortControllerRef.current = null
-      }
     }
   }
 
-  // Get user's current location
   const handleUseMyLocation = useCallback(async () => {
     const result = await getLocation()
     if (result) {
       setPickup(result.address)
       setPickupCoords(result.coordinates)
+      setLocalError('')
+      clearComparisonError()
     }
-  }, [getLocation])
+  }, [getLocation, clearComparisonError])
 
-  // Swap pickup and destination
   const handleSwap = useCallback(() => {
     const tempPickup = pickup
     const tempPickupCoords = pickupCoords
@@ -550,20 +343,30 @@ export default function RideComparisonForm({
 
   const handleEdit = useCallback(() => {
     setShowForm(true)
-  }, [])
+    setLocalError('')
+    clearComparisonError()
+  }, [clearComparisonError])
 
   const handleReset = useCallback(() => {
     setPickup('')
     setDestination('')
-    setResults(null)
-    setRouteId(null)
-    setInsights('')
-    setError('')
     setPickupCoords(null)
     setDestinationCoords(null)
-    setAiRecommendations([])
+    setLocalError('')
+    clearComparisonError()
+    resetComparison()
     setShowForm(true)
-  }, [])
+  }, [clearComparisonError, resetComparison])
+
+  const errorMessage = localError || comparisonError || locationError || ''
+  const results = data?.comparisons ?? null
+  const routeId = data?.routeId ?? null
+  const insights = data?.insights ?? ''
+  const surgeInfo = data?.surgeInfo ?? null
+  const timeRecommendations = data?.timeRecommendations ?? []
+  const aiRecommendations = data?.aiRecommendations ?? []
+  const mapPickupCoords = data?.pickupCoords ?? pickupCoords
+  const mapDestinationCoords = data?.destinationCoords ?? destinationCoords
 
   return (
     <div className="w-full max-w-3xl mx-auto">
@@ -585,7 +388,7 @@ export default function RideComparisonForm({
               label="Pickup Location"
               placeholder="Enter pickup location"
               value={pickup}
-              onChange={setPickup}
+              onChange={handlePickupChange}
               onSelect={handlePickupSelect}
               commonPlaces={COMMON_PLACES}
               labelIcon={
@@ -630,7 +433,7 @@ export default function RideComparisonForm({
               label="Destination"
               placeholder="Enter destination"
               value={destination}
-              onChange={setDestination}
+              onChange={handleDestinationChange}
               onSelect={handleDestinationSelect}
               commonPlaces={COMMON_PLACES}
               labelIcon={
@@ -675,7 +478,7 @@ export default function RideComparisonForm({
               {isLoading ? (
                 <div className="flex items-center justify-center">
                   <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  <span>Comparing prices...</span>
+                  <span>{isRefreshing ? 'Refreshing prices...' : 'Comparing prices...'}</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center">
@@ -708,7 +511,7 @@ export default function RideComparisonForm({
         mode={airportSelectorMode}
       />
 
-      {error && (
+      {errorMessage && (
         <div className="mt-6 p-4 bg-destructive/10 text-destructive rounded-xl border border-destructive/20">
           <div className="flex items-center">
             <svg
@@ -724,17 +527,24 @@ export default function RideComparisonForm({
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span className="text-sm">{error}</span>
+            <span className="text-sm">{errorMessage}</span>
           </div>
         </div>
       )}
 
+      {isRefreshing && results && (
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Refreshing your latest comparison while keeping the current results visible.</span>
+        </div>
+      )}
+
       <section className="space-y-6">
-        {pickupCoords && destinationCoords && (
+        {mapPickupCoords && mapDestinationCoords && (
           <RouteMap
-            key={`${pickupCoords[0]}-${pickupCoords[1]}-${destinationCoords[0]}-${destinationCoords[1]}`}
-            pickup={pickupCoords}
-            destination={destinationCoords}
+            key={`${mapPickupCoords[0]}-${mapPickupCoords[1]}-${mapDestinationCoords[0]}-${mapDestinationCoords[1]}`}
+            pickup={mapPickupCoords}
+            destination={mapDestinationCoords}
           />
         )}
 
@@ -818,8 +628,10 @@ export default function RideComparisonForm({
             surgeInfo={surgeInfo}
             pickup={pickup}
             destination={destination}
-            pickupCoords={pickupCoords}
-            destinationCoords={destinationCoords}
+            pickupCoords={data?.pickupCoords ?? null}
+            destinationCoords={data?.destinationCoords ?? null}
+            timeRecommendations={timeRecommendations}
+            aiRecommendations={aiRecommendations}
           />
         )}
       </section>

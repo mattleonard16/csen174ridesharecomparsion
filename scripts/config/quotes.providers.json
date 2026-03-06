@@ -1,0 +1,12 @@
+[
+  {
+    "name": "RideGuru",
+    "endpoint": "https://api.ride.guru/v1/quotes",
+    "apiKeyEnv": "RIDEGURU_API_KEY"
+  },
+  {
+    "name": "SampleAggregator",
+    "endpoint": "https://aggregator.example.com/api/quotes",
+    "apiKeyEnv": "AGGREGATOR_API_KEY"
+  }
+]

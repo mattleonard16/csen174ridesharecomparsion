@@ -6,26 +6,33 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'html',
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
   },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    {
-      name: 'demo',
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1280, height: 720 },
-        video: 'on',
-        launchOptions: { slowMo: 600 },
-      },
-    },
-  ],
+  projects: process.env.CI
+    ? [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
+    : [
+        { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+        {
+          name: 'demo',
+          use: {
+            ...devices['Desktop Chrome'],
+            viewport: { width: 1280, height: 720 },
+            video: 'on',
+            launchOptions: { slowMo: 600 },
+          },
+        },
+      ],
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
+    env: {
+      ...process.env,
+      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? 'test-secret',
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? 'http://localhost:3000',
+    },
   },
 })

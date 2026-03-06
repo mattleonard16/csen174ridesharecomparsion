@@ -22,7 +22,9 @@ test('SFO to Downtown SF demo showcase', async ({ page }) => {
   await page.waitForTimeout(3000)
 
   // 6. Scroll map into view
-  const mapContainer = page.locator('[id^="map"], .maplibregl-map, [class*="map-container"]').first()
+  const mapContainer = page
+    .locator('[id^="map"], .maplibregl-map, [class*="map-container"]')
+    .first()
   const mapExists = await mapContainer.count()
   if (mapExists > 0) {
     await mapContainer.scrollIntoViewIfNeeded()

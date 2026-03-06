@@ -71,10 +71,7 @@ const RequestSchema = z.object({
     uber: z.object({ price: z.string(), waitTime: z.string() }),
     lyft: z.object({ price: z.string(), waitTime: z.string() }),
     taxi: z.object({ price: z.string(), waitTime: z.string() }),
-    waymo: z
-      .object({ price: z.string(), waitTime: z.string() })
-      .optional()
-      .nullable(),
+    waymo: z.object({ price: z.string(), waitTime: z.string() }).optional().nullable(),
   }),
   surgeInfo: z
     .object({
@@ -97,17 +94,14 @@ function buildPrompt(
     `Uber ${results.uber.price} (${results.uber.waitTime} wait)`,
     `Lyft ${results.lyft.price} (${results.lyft.waitTime} wait)`,
     `Taxi ${results.taxi.price} (${results.taxi.waitTime} wait)`,
-    results.waymo
-      ? `Waymo ${results.waymo.price} (${results.waymo.waitTime} wait)`
-      : null,
+    results.waymo ? `Waymo ${results.waymo.price} (${results.waymo.waitTime} wait)` : null,
   ]
     .filter(Boolean)
     .join(', ')
 
-  const surgeNote =
-    surgeInfo?.isActive
-      ? ` Surge is active at ${surgeInfo.multiplier.toFixed(1)}x (${surgeInfo.reason}).`
-      : ''
+  const surgeNote = surgeInfo?.isActive
+    ? ` Surge is active at ${surgeInfo.multiplier.toFixed(1)}x (${surgeInfo.reason}).`
+    : ''
 
   const timeOfDay =
     currentHour < 6
@@ -165,10 +159,7 @@ async function handlePost(request: NextRequest) {
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'AI insights not configured' },
-      { status: 503 }
-    )
+    return NextResponse.json({ error: 'AI insights not configured' }, { status: 503 })
   }
 
   try {
@@ -187,10 +178,7 @@ async function handlePost(request: NextRequest) {
     return NextResponse.json({ insight })
   } catch (error) {
     console.error('OpenAI API error:', error)
-    return NextResponse.json(
-      { error: 'AI insights temporarily unavailable' },
-      { status: 503 }
-    )
+    return NextResponse.json({ error: 'AI insights temporarily unavailable' }, { status: 503 })
   }
 }
 

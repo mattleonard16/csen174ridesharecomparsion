@@ -47,9 +47,7 @@ function isWithinQuota(): boolean {
  * Generate a cache key from recommendation data points.
  */
 function buildCacheKey(recommendations: AIRecommendation[]): string {
-  return recommendations
-    .map(r => `${r.type}:${JSON.stringify(r.dataPoints)}`)
-    .join('|')
+  return recommendations.map(r => `${r.type}:${JSON.stringify(r.dataPoints)}`).join('|')
 }
 
 /**
@@ -156,8 +154,7 @@ export async function enhanceWithAI(
         messages: [{ role: 'user', content: prompt }],
       })
 
-      const text =
-        response.content[0].type === 'text' ? response.content[0].text : ''
+      const text = response.content[0].type === 'text' ? response.content[0].text : ''
 
       // Parse numbered responses
       const lines = text

@@ -43,6 +43,28 @@ export interface ComparisonPersistenceContext {
   sessionId?: string | null
 }
 
+export interface ComparisonLocationInput {
+  name: string
+  lat: string
+  lng: string
+}
+
+export interface CoordinateComparisonRequest {
+  from: ComparisonLocationInput
+  to: ComparisonLocationInput
+  services: ServiceType[]
+  recaptchaToken?: string
+}
+
+export interface LegacyComparisonRequest {
+  pickup: string
+  destination: string
+  services?: ServiceType[]
+  recaptchaToken?: string
+}
+
+export type ComparisonRequestBody = CoordinateComparisonRequest | LegacyComparisonRequest
+
 // Surge information
 export interface SurgeInfo {
   isActive: boolean
@@ -69,6 +91,7 @@ export interface AIRecommendation {
 
 // API response types
 export interface ComparisonApiResponse {
+  routeId?: string | null
   comparisons: ComparisonResults
   insights: string
   pickupCoords: Coordinates

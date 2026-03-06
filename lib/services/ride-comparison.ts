@@ -8,52 +8,23 @@ import type {
   ComparisonResults,
   Coordinates,
   Latitude,
-  RideResult,
-  ServiceType,
-  SurgeInfo,
   Longitude,
   PriceString,
+  RideResult,
   RideService,
+  ServiceType,
+  SurgeInfo,
 } from '@/types'
 
 const GEOCODE_CACHE = new Map<string, { value: Coordinates; expiresAt: number }>()
 const ROUTE_CACHE = new Map<string, { value: RouteMetrics; expiresAt: number }>()
-const COMPARISON_CACHE = new Map<string, { value: ComparisonComputation; expiresAt: number }>()
+const COMPARISON_CACHE = new Map<string, { value: CachedComparisonCore; expiresAt: number }>()
 
-// Cache size limits to prevent memory leaks
 const MAX_CACHE_SIZE = 1000
-const CACHE_CLEANUP_THRESHOLD = 0.8 // Trigger cleanup at 80% capacity
-
-/**
- * Clean up expired entries from a cache
- */
-function cleanupCache<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
-  const now = Date.now()
-  const keysToDelete: string[] = []
-  cache.forEach((entry, key) => {
-    if (entry.expiresAt <= now) {
-      keysToDelete.push(key)
-    }
-  })
-  keysToDelete.forEach(key => cache.delete(key))
-}
-
-/**
- * Perform cache maintenance - cleanup expired entries and evict oldest if over capacity
- */
-function maintainCache<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
-  // First, clean up expired entries
-  cleanupCache(cache)
-
-  // If still over threshold, evict oldest entries (first inserted)
-  if (cache.size > MAX_CACHE_SIZE * CACHE_CLEANUP_THRESHOLD) {
-    const entriesToRemove = cache.size - Math.floor(MAX_CACHE_SIZE * 0.5)
-    const keys = Array.from(cache.keys())
-    for (let i = 0; i < entriesToRemove && i < keys.length; i++) {
-      cache.delete(keys[i])
-    }
-  }
-}
+const CACHE_CLEANUP_THRESHOLD = 0.8
+const COMPARISON_CACHE_VERSION = 'v2'
+const PRECOMPUTED_COMPARISON_CACHE_TTL_MS = 5 * 60 * 1000
+const DYNAMIC_COMPARISON_CACHE_TTL_MS = 45 * 1000
 
 type PricingComputation = ReturnType<typeof pricingEngine.calculateFare>
 
@@ -63,14 +34,31 @@ interface RouteMetrics {
   osrmDurationSec?: number
 }
 
-interface ComparisonComputation {
-  routeId: string | null
+interface ComparisonCoreComputation {
   results: ComparisonResults
   surgeInfo: SurgeInfo
   timeRecommendations: string[]
   pickup: Coordinates
   destination: Coordinates
   insights: string
+}
+
+export interface ComparisonComputation extends ComparisonCoreComputation {
+  routeId: string | null
+}
+
+interface CachedPriceSnapshotData {
+  service: ServiceType
+  finalFare: number
+  surgeMultiplier: number
+  waitMinutes: number
+  weather?: string
+  trafficLevel?: 'light' | 'moderate' | 'heavy' | 'severe'
+}
+
+interface CachedComparisonCore extends ComparisonCoreComputation {
+  metrics: RouteMetrics
+  priceSnapshots: CachedPriceSnapshotData[]
 }
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
@@ -82,7 +70,6 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
 
 const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
 
-// Waymo service area bounding boxes
 const WAYMO_SERVICE_AREAS = {
   sanFrancisco: {
     minLat: 37.7,
@@ -98,9 +85,69 @@ const WAYMO_SERVICE_AREAS = {
   },
 }
 
-/**
- * Check if coordinates are within Waymo's service area
- */
+function cleanupCache<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
+  const now = Date.now()
+  const keysToDelete: string[] = []
+  cache.forEach((entry, key) => {
+    if (entry.expiresAt <= now) {
+      keysToDelete.push(key)
+    }
+  })
+  keysToDelete.forEach(key => cache.delete(key))
+}
+
+function maintainCache<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
+  cleanupCache(cache)
+
+  if (cache.size > MAX_CACHE_SIZE * CACHE_CLEANUP_THRESHOLD) {
+    const entriesToRemove = cache.size - Math.floor(MAX_CACHE_SIZE * 0.5)
+    const keys = Array.from(cache.keys())
+    for (let i = 0; i < entriesToRemove && i < keys.length; i++) {
+      cache.delete(keys[i])
+    }
+  }
+}
+
+function kmToMiles(km: number): number {
+  return km * 0.621371
+}
+
+function formatCoordinateValue(value: number): string {
+  return value.toFixed(5)
+}
+
+function getTimeBucket(timestamp: Date): string {
+  const quarterHour = Math.floor(timestamp.getMinutes() / 15)
+  const day = timestamp.toISOString().slice(0, 10)
+  return `${day}:${timestamp.getHours()}:${quarterHour}`
+}
+
+function normaliseServices(services: ServiceType[]): ServiceType[] {
+  const requestedServices = services.length ? services : DEFAULT_SERVICES
+  return Array.from(
+    new Set<ServiceType>(requestedServices.map(service => service.toLowerCase() as ServiceType))
+  )
+}
+
+function createComparisonCacheKey(
+  pickup: Coordinates,
+  destination: Coordinates,
+  services: ServiceType[],
+  timestamp: Date
+): string {
+  const pickupKey = `${formatCoordinateValue(pickup[0])},${formatCoordinateValue(pickup[1])}`
+  const destinationKey = `${formatCoordinateValue(destination[0])},${formatCoordinateValue(destination[1])}`
+
+  return [
+    'comparison',
+    COMPARISON_CACHE_VERSION,
+    pickupKey,
+    destinationKey,
+    services.join(','),
+    getTimeBucket(timestamp),
+  ].join(':')
+}
+
 function isInWaymoServiceArea(coords: Coordinates): boolean {
   const [lon, lat] = coords
 
@@ -109,12 +156,10 @@ function isInWaymoServiceArea(coords: Coordinates): boolean {
       return true
     }
   }
+
   return false
 }
 
-/**
- * Filter services based on route eligibility (e.g., Waymo service area)
- */
 function filterServicesForRoute(
   services: ServiceType[],
   pickup: Coordinates,
@@ -122,11 +167,139 @@ function filterServicesForRoute(
 ): ServiceType[] {
   return services.filter(service => {
     if (service === 'waymo') {
-      // Both pickup and destination must be in Waymo service area
       return isInWaymoServiceArea(pickup) && isInWaymoServiceArea(destination)
     }
+
     return true
   })
+}
+
+async function getComparisonCore(
+  pickup: Coordinates,
+  destination: Coordinates,
+  services: ServiceType[],
+  metrics: RouteMetrics,
+  timestamp: Date,
+  isPrecomputedRoute: boolean
+): Promise<CachedComparisonCore> {
+  const cacheKey = createComparisonCacheKey(pickup, destination, services, timestamp)
+  const cached = COMPARISON_CACHE.get(cacheKey)
+  const now = Date.now()
+
+  if (cached && cached.expiresAt > now) {
+    return cached.value
+  }
+
+  const resultsEntries = services.map(service => {
+    const computation = pricingEngine.calculateFare({
+      service,
+      pickupCoords: pickup,
+      destCoords: destination,
+      distanceKm: metrics.distanceKm,
+      durationMin: metrics.durationMin,
+      timestamp,
+      osrmDurationSec: metrics.osrmDurationSec,
+      expectedDurationSec: metrics.durationMin * 60,
+    })
+
+    return [service, buildRideResult(service, computation, metrics), computation] as const
+  })
+
+  const comparisonResults = Object.fromEntries(
+    resultsEntries.map(([service, result]) => [service, result])
+  ) as ComparisonResults
+
+  const { multiplier, surgeReason } = getTimeBasedMultiplier(pickup, destination, timestamp)
+
+  const core: CachedComparisonCore = {
+    metrics,
+    results: comparisonResults,
+    surgeInfo: {
+      multiplier,
+      reason: surgeReason,
+      isActive: multiplier > 1.05,
+    },
+    timeRecommendations: getBestTimeRecommendations(),
+    pickup,
+    destination,
+    insights: generateRecommendation(comparisonResults),
+    priceSnapshots: resultsEntries.map(([service, _, computation]) => ({
+      service,
+      finalFare: computation.breakdown.finalFare,
+      surgeMultiplier: computation.breakdown.surgeMultiplier,
+      waitMinutes: deriveWaitMinutes(
+        service,
+        computation.breakdown.surgeMultiplier,
+        metrics.durationMin
+      ),
+      weather: computation.surgeReason,
+      trafficLevel: classifyTraffic(computation.breakdown.trafficMultiplier),
+    })),
+  }
+
+  maintainCache(COMPARISON_CACHE)
+  COMPARISON_CACHE.set(cacheKey, {
+    value: core,
+    expiresAt:
+      now +
+      (isPrecomputedRoute ? PRECOMPUTED_COMPARISON_CACHE_TTL_MS : DYNAMIC_COMPARISON_CACHE_TTL_MS),
+  })
+
+  return core
+}
+
+async function persistComparison(
+  core: CachedComparisonCore,
+  pickupAddress: string,
+  destinationAddress: string,
+  pickupCoords: Coordinates,
+  destinationCoords: Coordinates,
+  options?: {
+    userId?: string | null
+    sessionId?: string | null
+    persist?: boolean
+  }
+): Promise<string | null> {
+  if (options?.persist === false) {
+    return null
+  }
+
+  const routeId = await findOrCreateRoute(
+    pickupAddress,
+    [pickupCoords[0], pickupCoords[1]],
+    destinationAddress,
+    [destinationCoords[0], destinationCoords[1]],
+    kmToMiles(core.metrics.distanceKm),
+    core.metrics.durationMin
+  )
+
+  if (!routeId) {
+    return null
+  }
+
+  core.priceSnapshots.forEach(snapshot => {
+    logPriceSnapshot(
+      routeId,
+      snapshot.service,
+      snapshot.finalFare,
+      snapshot.surgeMultiplier,
+      snapshot.waitMinutes,
+      {
+        weather: snapshot.weather,
+        trafficLevel: snapshot.trafficLevel,
+      }
+    ).catch(() => {
+      // Snapshot logging is non-critical and should never block user results.
+    })
+  })
+
+  logSearch(routeId, options?.userId ?? null, core.results, options?.sessionId ?? undefined).catch(
+    () => {
+      // Search logging is non-critical and should never block user results.
+    }
+  )
+
+  return routeId
 }
 
 export async function compareRidesByAddresses(
@@ -142,15 +315,6 @@ export async function compareRidesByAddresses(
 ): Promise<ComparisonComputation | null> {
   const sanitizedPickup = sanitizeString(pickupAddress)
   const sanitizedDestination = sanitizeString(destinationAddress)
-
-  const cacheKey = `${sanitizedPickup.toLowerCase()}-${sanitizedDestination.toLowerCase()}`
-  const cached = COMPARISON_CACHE.get(cacheKey)
-  const now = Date.now()
-
-  if (cached && cached.expiresAt > now) {
-    return cached.value
-  }
-
   const precomputedRoute = findPrecomputedRouteByAddresses(sanitizedPickup, sanitizedDestination)
 
   let pickupCoords: Coordinates | null
@@ -160,7 +324,6 @@ export async function compareRidesByAddresses(
     pickupCoords = precomputedRoute.pickup.coordinates
     destinationCoords = precomputedRoute.destination.coordinates
   } else {
-    // Parallelize geocoding calls for better performance (~200-500ms savings)
     const [pickup, destination] = await Promise.all([
       geocodeWithCache(sanitizedPickup),
       geocodeWithCache(sanitizedDestination),
@@ -173,7 +336,7 @@ export async function compareRidesByAddresses(
     return null
   }
 
-  const result = await compareRidesByCoordinates(
+  return compareRidesByCoordinates(
     { name: sanitizedPickup, coordinates: pickupCoords },
     { name: sanitizedDestination, coordinates: destinationCoords },
     services,
@@ -187,15 +350,6 @@ export async function compareRidesByAddresses(
       precomputedMetrics: precomputedRoute?.metrics,
     }
   )
-
-  const cacheTTL = precomputedRoute ? 1800000 : 45000
-  maintainCache(COMPARISON_CACHE)
-  COMPARISON_CACHE.set(cacheKey, {
-    value: result,
-    expiresAt: now + cacheTTL,
-  })
-
-  return result
 }
 
 export async function compareRidesByCoordinates(
@@ -212,24 +366,17 @@ export async function compareRidesByCoordinates(
     precomputedMetrics?: RouteMetrics
   }
 ): Promise<ComparisonComputation> {
-  const normalisedServices = services.length ? services : DEFAULT_SERVICES
-  const uniqueServices = Array.from(
-    new Set<ServiceType>(normalisedServices.map(service => service.toLowerCase() as ServiceType))
-  )
+  const uniqueServices = normaliseServices(services)
 
-  // Filter services based on route eligibility (e.g., Waymo service area)
   let eligibleServices = filterServicesForRoute(
     uniqueServices,
     pickup.coordinates,
     destination.coordinates
   )
 
-  // Guard against empty services (e.g., only Waymo selected but outside service area)
   if (eligibleServices.length === 0) {
-    // Fall back to default services excluding Waymo for this route
-    const fallbackServices = DEFAULT_SERVICES.filter(s => s !== 'waymo')
     eligibleServices = filterServicesForRoute(
-      fallbackServices,
+      DEFAULT_SERVICES.filter(service => service !== 'waymo'),
       pickup.coordinates,
       destination.coordinates
     )
@@ -239,95 +386,34 @@ export async function compareRidesByCoordinates(
     ? options.precomputedMetrics
     : await getRouteMetrics(pickup.coordinates, destination.coordinates)
 
-  const shouldPersist = options?.persist !== false
-  const pickupAddress = options?.pickupAddress ?? pickup.name
-  const destinationAddress = options?.destinationAddress ?? destination.name
-
-  // Start route creation early (await later for routeId needed by save/alert features)
-  const routeIdPromise: Promise<string | null> = shouldPersist
-    ? findOrCreateRoute(
-        pickupAddress,
-        [pickup.coordinates[0], pickup.coordinates[1]],
-        destinationAddress,
-        [destination.coordinates[0], destination.coordinates[1]],
-        metrics.distanceKm,
-        metrics.durationMin
-      )
-    : Promise.resolve(null)
-
-  const resultsEntries = eligibleServices.map(service => {
-    const computation = pricingEngine.calculateFare({
-      service,
-      pickupCoords: pickup.coordinates,
-      destCoords: destination.coordinates,
-      distanceKm: metrics.distanceKm,
-      durationMin: metrics.durationMin,
-      timestamp,
-      osrmDurationSec: metrics.osrmDurationSec,
-      expectedDurationSec: metrics.durationMin * 60,
-    })
-
-    return [service, buildRideResult(service, computation, metrics), computation] as const
-  })
-
-  const comparisonResults = Object.fromEntries(
-    resultsEntries.map(([service, result]) => [service, result])
-  ) as ComparisonResults
-
-  const { multiplier, surgeReason } = getTimeBasedMultiplier(
+  const core = await getComparisonCore(
     pickup.coordinates,
     destination.coordinates,
-    timestamp
+    eligibleServices,
+    metrics,
+    timestamp,
+    !!options?.precomputedMetrics
   )
 
-  const surgeInfo: SurgeInfo = {
-    multiplier,
-    reason: surgeReason,
-    isActive: multiplier > 1.05,
-  }
-
-  // Await routeId (needed for save route and price alert features)
-  // but fire-and-forget the logging operations for faster response
-  const routeId = await routeIdPromise
-
-  // Fire-and-forget: Log price snapshots and search asynchronously (non-blocking)
-  if (shouldPersist && routeId) {
-    // Log price snapshots for each service
-    resultsEntries.forEach(([service, _, computation]) => {
-      logPriceSnapshot(
-        routeId,
-        service,
-        computation.breakdown.finalFare,
-        computation.breakdown.surgeMultiplier,
-        deriveWaitMinutes(service, computation.breakdown.surgeMultiplier, metrics.durationMin),
-        {
-          weather: computation.surgeReason,
-          trafficLevel: classifyTraffic(computation.breakdown.trafficMultiplier),
-        }
-      ).catch(() => {
-        // Price snapshot logging failed (non-critical) - ignore
-      })
-    })
-
-    // Log the search
-    logSearch(
-      routeId,
-      options?.userId ?? null,
-      comparisonResults,
-      options?.sessionId ?? undefined
-    ).catch(() => {
-      // Search logging failed (non-critical) - ignore
-    })
-  }
+  const pickupAddress = options?.pickupAddress ?? pickup.name
+  const destinationAddress = options?.destinationAddress ?? destination.name
+  const routeId = await persistComparison(
+    core,
+    pickupAddress,
+    destinationAddress,
+    pickup.coordinates,
+    destination.coordinates,
+    options
+  )
 
   return {
     routeId,
-    results: comparisonResults,
-    surgeInfo,
-    timeRecommendations: getBestTimeRecommendations(),
-    pickup: pickup.coordinates,
-    destination: destination.coordinates,
-    insights: generateRecommendation(comparisonResults),
+    results: core.results,
+    surgeInfo: core.surgeInfo,
+    timeRecommendations: core.timeRecommendations,
+    pickup: core.pickup,
+    destination: core.destination,
+    insights: core.insights,
   }
 }
 

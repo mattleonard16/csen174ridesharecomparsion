@@ -83,7 +83,7 @@ body {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid hsl(var(--border) / 0.8);
-    box-shadow: 0 4px 24px hsl(var(--foreground) / 0.10);
+    box-shadow: 0 4px 24px hsl(var(--foreground) / 0.1);
   }
 
   /* Gradient Mesh Background */

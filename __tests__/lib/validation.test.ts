@@ -182,8 +182,10 @@ describe('validation module', () => {
       expect(() => LocationNameSchema.parse('   ')).toThrow()
     })
 
-    it('should reject location with parentheses', () => {
-      expect(() => LocationNameSchema.parse('San Francisco (CA)')).toThrow(/invalid characters/)
+    it('should accept airport names with code in parentheses', () => {
+      expect(() =>
+        LocationNameSchema.parse('San Francisco International Airport (SFO)')
+      ).not.toThrow()
     })
   })
 
@@ -729,6 +731,10 @@ describe('validation module', () => {
     describe('valid locations', () => {
       it('should accept "San Francisco, CA"', () => {
         expect(detectSpamPatterns('San Francisco, CA')).toBe(false)
+      })
+
+      it('should accept known airport codes', () => {
+        expect(detectSpamPatterns('SFO')).toBe(false)
       })
 
       it('should accept "123 Main Street"', () => {

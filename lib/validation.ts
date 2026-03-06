@@ -1,8 +1,9 @@
 import { z } from 'zod'
+import { getAirportByCode } from '@/lib/airports'
 
 // Common validation patterns
 const COORDINATE_REGEX = /^-?\d+\.?\d*$/
-const LOCATION_NAME_REGEX = /^[a-zA-Z0-9\s,.-]+$/
+const LOCATION_NAME_REGEX = /^[a-zA-Z0-9\s,().-]+$/
 
 /**
  * Coordinate validation schema
@@ -169,17 +170,23 @@ export function detectSuspiciousCoordinates(
  * Detect common spam patterns in location names
  */
 export function detectSpamPatterns(locationName: string): boolean {
+  const normalizedLocation = locationName.trim()
+
+  // Allow known airport codes like SFO while rejecting generic one-word spam.
+  if (/^[a-z]+$/i.test(normalizedLocation)) {
+    return !getAirportByCode(normalizedLocation)
+  }
+
   const spamPatterns = [
     /test/i,
     /spam/i,
     /bot/i,
     /script/i,
     /hack/i,
-    /^[a-z]+$/i, // Single word without spaces
     /\d{10,}/, // Long numbers
     /(.)\1{5,}/, // Repeated characters (aaaaaa)
     /^[^a-zA-Z]*$/, // No letters at all
   ]
 
-  return spamPatterns.some(pattern => pattern.test(locationName))
+  return spamPatterns.some(pattern => pattern.test(normalizedLocation))
 }

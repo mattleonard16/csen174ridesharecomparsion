@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useId, useState } from 'react'
 import { MapPin } from 'lucide-react'
 import type { LocationSuggestion, CommonPlaces } from '@/types'
 import { useLocationSuggestions } from '@/lib/hooks/useLocationSuggestions'
@@ -37,6 +37,8 @@ export function LocationInput({
 }: LocationInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const debounceTimeoutRef = useRef<NodeJS.Timeout>()
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const listboxId = useId()
 
   const {
     suggestions,
@@ -75,6 +77,7 @@ export function LocationInput({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = e.target.value
       onChange(newValue)
+      setActiveIndex(-1)
 
       // Clear existing timeout
       if (debounceTimeoutRef.current) {
@@ -108,6 +111,7 @@ export function LocationInput({
   const handleSuggestionClick = useCallback(
     (suggestion: LocationSuggestion) => {
       onSelect(suggestion)
+      setActiveIndex(-1)
       clearSuggestions()
     },
     [onSelect, clearSuggestions]
@@ -115,8 +119,34 @@ export function LocationInput({
 
   const handleClear = useCallback(() => {
     onChange('')
+    setActiveIndex(-1)
     clearSuggestions()
   }, [onChange, clearSuggestions])
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (suggestions.length === 0) {
+        return
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setShowSuggestions(true)
+        setActiveIndex(prev => (prev + 1) % suggestions.length)
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setActiveIndex(prev => (prev <= 0 ? suggestions.length - 1 : prev - 1))
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault()
+        handleSuggestionClick(suggestions[activeIndex])
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        setActiveIndex(-1)
+        setShowSuggestions(false)
+      }
+    },
+    [activeIndex, handleSuggestionClick, setShowSuggestions, suggestions]
+  )
 
   return (
     <div className="space-y-2 relative" ref={containerRef}>
@@ -136,8 +166,18 @@ export function LocationInput({
           value={value}
           onChange={handleInputChange}
           onFocus={handleFocus}
+          onKeyDown={handleKeyDown}
           className="w-full px-4 py-4 pr-10 bg-card border border-border rounded-xl text-foreground placeholder-muted-foreground/60 shadow-sm focus:shadow-md focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 outline-none text-base"
           required
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showSuggestions}
+          aria-controls={listboxId}
+          aria-activedescendant={
+            activeIndex >= 0
+              ? `${listboxId}-option-${suggestions[activeIndex]?.place_id ?? activeIndex}`
+              : undefined
+          }
         />
         {/* Clear button */}
         {value && (
@@ -153,17 +193,34 @@ export function LocationInput({
 
       {/* Suggestions Dropdown */}
       {showSuggestions && (
-        <div className="absolute z-10 w-full glass-card rounded-xl mt-2 max-h-60 overflow-y-auto shadow-lg border border-border/50">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label={`${label} suggestions`}
+          className="absolute z-10 w-full glass-card rounded-xl mt-2 max-h-60 overflow-y-auto shadow-lg border border-border/50"
+        >
           {isLoading ? (
             <div className="p-4 text-center text-muted-foreground text-sm">
               <span className="animate-pulse">Searching...</span>
             </div>
+          ) : suggestions.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground text-sm">
+              No matching places found.
+            </div>
           ) : (
             suggestions.map((suggestion, index) => (
-              <div
+              <button
                 key={suggestion.place_id || index}
+                id={`${listboxId}-option-${suggestion.place_id || index}`}
+                type="button"
+                role="option"
+                aria-selected={activeIndex === index}
+                onMouseDown={event => event.preventDefault()}
                 onClick={() => handleSuggestionClick(suggestion)}
-                className="p-3 hover:bg-muted/50 cursor-pointer border-b border-border/30 last:border-b-0 transition-all duration-150 first:rounded-t-xl last:rounded-b-xl"
+                onMouseEnter={() => setActiveIndex(index)}
+                className={`w-full p-3 text-left border-b border-border/30 last:border-b-0 transition-all duration-150 first:rounded-t-xl last:rounded-b-xl ${
+                  activeIndex === index ? 'bg-muted/60' : 'hover:bg-muted/50'
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -176,7 +233,7 @@ export function LocationInput({
                     </div>
                   </div>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>

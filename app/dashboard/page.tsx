@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
 import { TrendingDown, Clock, Zap, ArrowLeft, BarChart3, MapPin } from 'lucide-react'
@@ -31,15 +31,16 @@ export default function DashboardPage() {
   const [selectedService, setSelectedService] = useState<'uber' | 'lyft' | 'taxi' | 'waymo'>('uber')
   const [dataLoading, setDataLoading] = useState(true)
   const [routesLoading, setRoutesLoading] = useState(true)
+  const [routesError, setRoutesError] = useState<string | null>(null)
+  const [savingsError, setSavingsError] = useState<string | null>(null)
+  const [dataError, setDataError] = useState<string | null>(null)
   const [savingsData, setSavingsData] = useState<{
     totalSavings: number
     comparisonCount: number
     recsFollowed: number
     alertsSet: number
   }>({ totalSavings: 0, comparisonCount: 0, recsFollowed: 0, alertsSet: 0 })
-  const [surgeInsights, setSurgeInsights] = useState<
-    { hour: number; probability: number }[]
-  >([])
+  const [surgeInsights, setSurgeInsights] = useState<{ hour: number; probability: number }[]>([])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -47,86 +48,99 @@ export default function DashboardPage() {
     }
   }, [user, loading, router])
 
-  // Fetch saved routes on mount
-  useEffect(() => {
-    async function loadSavedRoutes() {
-      if (!user) return
+  const loadSavedRoutes = useCallback(async () => {
+    if (!user) return
 
-      setRoutesLoading(true)
-      try {
-        const response = await fetch('/api/dashboard?savedRoutes=true')
-        if (response.ok) {
-          const data = await response.json()
-          setSavedRoutes(data.savedRoutes || [])
-          // Auto-select first route if available
-          if (data.savedRoutes?.length > 0 && data.savedRoutes[0].routeId) {
-            setSelectedRouteId(data.savedRoutes[0].routeId)
-          }
-        }
-      } catch {
-        // Error loading saved routes - ignore
-      } finally {
-        setRoutesLoading(false)
+    setRoutesLoading(true)
+    setRoutesError(null)
+
+    try {
+      const response = await fetch('/api/dashboard?savedRoutes=true')
+      if (!response.ok) {
+        throw new Error('Unable to load your saved routes right now.')
       }
-    }
 
-    loadSavedRoutes()
+      const data = await response.json()
+      setSavedRoutes(data.savedRoutes || [])
+      if (data.savedRoutes?.length > 0 && data.savedRoutes[0].routeId) {
+        setSelectedRouteId(current => current ?? data.savedRoutes[0].routeId)
+      }
+    } catch (error) {
+      setRoutesError(
+        error instanceof Error ? error.message : 'Unable to load your saved routes right now.'
+      )
+    } finally {
+      setRoutesLoading(false)
+    }
   }, [user])
 
-  // Fetch savings and surge insights
-  useEffect(() => {
-    async function loadSavingsData() {
-      if (!user) return
+  const loadSavingsData = useCallback(async () => {
+    if (!user) return
 
-      try {
-        const response = await fetch('/api/dashboard?savings=true')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.savings) {
-            setSavingsData(data.savings)
-          }
-          if (data.surgeInsights) {
-            setSurgeInsights(data.surgeInsights)
-          }
-        }
-      } catch {
-        // Error loading savings data - ignore
+    setSavingsError(null)
+
+    try {
+      const response = await fetch('/api/dashboard?savings=true')
+      if (!response.ok) {
+        throw new Error('Unable to refresh savings insights right now.')
       }
-    }
 
-    loadSavingsData()
+      const data = await response.json()
+      if (data.savings) {
+        setSavingsData(data.savings)
+      }
+      if (data.surgeInsights) {
+        setSurgeInsights(data.surgeInsights)
+      }
+    } catch (error) {
+      setSavingsError(
+        error instanceof Error ? error.message : 'Unable to refresh savings insights right now.'
+      )
+    }
   }, [user])
 
-  // Fetch price data when route or service changes
-  useEffect(() => {
-    async function loadData() {
-      if (!user || !selectedRouteId) {
-        setDataLoading(false)
-        return
-      }
-
-      setDataLoading(true)
-      try {
-        const response = await fetch(
-          `/api/dashboard?routeId=${encodeURIComponent(selectedRouteId)}&service=${selectedService}&daysBack=7`
-        )
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch dashboard data')
-        }
-
-        const data = await response.json()
-        setPriceData(data.priceHistory || [])
-        setHourlyAverages(data.hourlyAverages || [])
-      } catch {
-        // Error loading dashboard data - ignore
-      } finally {
-        setDataLoading(false)
-      }
+  const loadData = useCallback(async () => {
+    if (!user || !selectedRouteId) {
+      setDataLoading(false)
+      setDataError(null)
+      return
     }
 
-    loadData()
-  }, [user, selectedRouteId, selectedService])
+    setDataLoading(true)
+    setDataError(null)
+
+    try {
+      const response = await fetch(
+        `/api/dashboard?routeId=${encodeURIComponent(selectedRouteId)}&service=${selectedService}&daysBack=7`
+      )
+
+      if (!response.ok) {
+        throw new Error('Unable to refresh route analytics right now.')
+      }
+
+      const data = await response.json()
+      setPriceData(data.priceHistory || [])
+      setHourlyAverages(data.hourlyAverages || [])
+    } catch (error) {
+      setDataError(
+        error instanceof Error ? error.message : 'Unable to refresh route analytics right now.'
+      )
+    } finally {
+      setDataLoading(false)
+    }
+  }, [selectedRouteId, selectedService, user])
+
+  useEffect(() => {
+    void loadSavedRoutes()
+  }, [loadSavedRoutes])
+
+  useEffect(() => {
+    void loadSavingsData()
+  }, [loadSavingsData])
+
+  useEffect(() => {
+    void loadData()
+  }, [loadData])
 
   if (loading || !user) {
     return (
@@ -165,6 +179,19 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 text-muted-foreground">
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
               <span>Loading routes...</span>
+            </div>
+          ) : routesError ? (
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+              <div>
+                <p className="font-medium text-foreground">Couldn&apos;t load your routes</p>
+                <p className="text-sm text-muted-foreground mt-1">{routesError}</p>
+              </div>
+              <button
+                onClick={() => void loadSavedRoutes()}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+              >
+                Retry
+              </button>
             </div>
           ) : savedRoutes.length > 0 ? (
             <select
@@ -208,6 +235,38 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
+
+        {savingsError && (
+          <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+            <div>
+              <p className="font-medium text-foreground">
+                Savings insights are temporarily unavailable
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">{savingsError}</p>
+            </div>
+            <button
+              onClick={() => void loadSavingsData()}
+              className="px-4 py-2 rounded-lg bg-background border border-border hover:bg-muted transition-colors text-sm font-medium"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {dataError && (
+          <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <div>
+              <p className="font-medium text-foreground">Route analytics failed to load</p>
+              <p className="text-sm text-muted-foreground mt-1">{dataError}</p>
+            </div>
+            <button
+              onClick={() => void loadData()}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {dataLoading ? (
           <div className="text-center py-20">
