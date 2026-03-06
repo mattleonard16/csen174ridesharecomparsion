@@ -160,7 +160,7 @@ export function detectSuspiciousCoordinates(
   // Check if coordinates are suspiciously close (< 100 meters)
   const distance = Math.sqrt(
     Math.pow((toLat - fromLat) * 111000, 2) +
-    Math.pow((toLng - fromLng) * 111000 * Math.cos((fromLat * Math.PI) / 180), 2)
+      Math.pow((toLng - fromLng) * 111000 * Math.cos((fromLat * Math.PI) / 180), 2)
   )
 
   return distance < 100 // Less than 100 meters
