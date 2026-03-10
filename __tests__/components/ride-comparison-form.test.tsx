@@ -361,7 +361,9 @@ describe('RideComparisonForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /compare rides/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(/we could not find one of those addresses/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/we could not find one of those addresses/i)
+      ).toBeInTheDocument()
     })
   })
 })

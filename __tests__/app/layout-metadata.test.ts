@@ -4,13 +4,9 @@ jest.mock('next/font/google', () => ({
   Space_Mono: () => ({ variable: '--font-space-mono' }),
 }))
 
-jest.mock(
-  'next/dynamic',
-  () => () =>
-    function DynamicStub() {
-      return null
-    }
-)
+jest.mock('next/dynamic', () => () => function DynamicStub() {
+  return null
+})
 
 jest.mock('@vercel/analytics/react', () => ({
   Analytics: () => null,

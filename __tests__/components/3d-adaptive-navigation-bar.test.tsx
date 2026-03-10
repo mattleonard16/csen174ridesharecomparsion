@@ -103,6 +103,7 @@ describe('PillBase scroll cleanup', () => {
       configurable: true,
       value: 2400,
     })
+
     ;['home', 'routes', 'features', 'compare'].forEach((id, index) => {
       const section = document.createElement('section')
       section.id = id

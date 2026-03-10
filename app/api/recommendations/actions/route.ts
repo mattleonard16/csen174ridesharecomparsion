@@ -52,7 +52,8 @@ function cleanupExpiredDedupes(now: number) {
   })
 
   if (inMemoryDedupeStore.size > MAX_DEDUPE_STORE_SIZE) {
-    const entries = Array.from(inMemoryDedupeStore.entries()).sort((a, b) => a[1] - b[1])
+    const entries = Array.from(inMemoryDedupeStore.entries())
+      .sort((a, b) => a[1] - b[1])
     const toRemove = entries.slice(0, entries.length - MAX_DEDUPE_STORE_SIZE)
     for (const entry of toRemove) {
       inMemoryDedupeStore.delete(entry[0])

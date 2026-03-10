@@ -5,25 +5,21 @@
 ## Test Framework
 
 **Runner:**
-
 - Jest 29.x with `jest-environment-jsdom`
 - Config: `jest.config.js` (wraps Next.js Jest config via `next/jest`)
 
 **Assertion Library:**
-
 - `@testing-library/jest-dom` — DOM matchers (`toBeInTheDocument`, `toBeVisible`)
 - `@testing-library/react` 16.x — component rendering utilities
 - `@testing-library/user-event` 14.x — realistic user interaction simulation
 - Built-in Jest matchers for service/API tests
 
 **E2E Framework:**
-
 - Playwright 1.57.x
 - Config: `playwright.config.ts`
 - Chromium only (Desktop Chrome device)
 
 **Run Commands:**
-
 ```bash
 npm test                  # Run all Jest tests
 npm run test:watch        # Jest watch mode
@@ -36,18 +32,15 @@ npm run quality           # typecheck + lint + format:check + test (full CI gate
 ## Test File Organization
 
 **Location:**
-
 - Jest unit/integration tests: `__tests__/` at repository root, mirroring source structure
 - E2E tests: `e2e/` at repository root
 - Fixtures: `__tests__/fixtures/` (JSON data files)
 
 **Naming:**
-
 - Unit/integration: `{source-name}.test.ts` or `{source-name}.test.tsx`
 - E2E: `{feature}.spec.ts`
 
 **Directory structure:**
-
 ```
 __tests__/
 ├── api/                    # API route handler tests
@@ -85,7 +78,6 @@ e2e/
 ## Test Suite Structure
 
 **Nested `describe` grouping by function/feature, then behavior:**
-
 ```typescript
 describe('ride-comparison service', () => {
   describe('compareRidesByAddresses', () => {
@@ -104,7 +96,6 @@ describe('ride-comparison service', () => {
 ```
 
 **Lifecycle hooks:**
-
 - `beforeAll` — global setup (swap global `fetch`)
 - `afterAll` — restore globals
 - `beforeEach` — clear mocks (`jest.clearAllMocks()`), reset caches, switch to fake timers
@@ -117,7 +108,6 @@ describe('ride-comparison service', () => {
 **Framework:** Jest built-in mocking (`jest.mock`, `jest.fn`, `jest.spyOn`)
 
 **Module mocking pattern:**
-
 ```typescript
 // At top of file, before imports (Jest hoists these)
 jest.mock('@/lib/database', () => ({
@@ -133,26 +123,18 @@ const mockCompareRides = compareRidesByAddresses as jest.MockedFunction<
 ```
 
 **Global fetch mocking:**
-
 ```typescript
 // In setup file (jest.setup.ts)
 global.fetch = jest.fn()
 
 // In test file — replace globally per test suite
 const mockFetch = jest.fn()
-beforeAll(() => {
-  global.fetch = mockFetch
-})
-afterAll(() => {
-  global.fetch = originalFetch
-})
-beforeEach(() => {
-  mockFetch.mockReset()
-})
+beforeAll(() => { global.fetch = mockFetch })
+afterAll(() => { global.fetch = originalFetch })
+beforeEach(() => { mockFetch.mockReset() })
 ```
 
 **AbortSignal simulation (for timeout tests):**
-
 ```typescript
 mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
   const signal = init?.signal as AbortSignal | undefined
@@ -167,7 +149,6 @@ mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
 ```
 
 **Fake timers for async/timeout tests:**
-
 ```typescript
 beforeEach(() => {
   jest.useFakeTimers()
@@ -184,7 +165,6 @@ const result = await promise
 ```
 
 **React component mocking:**
-
 ```typescript
 jest.mock('next/dynamic', () => ({
   __esModule: true,
@@ -206,14 +186,12 @@ jest.mock('@/components/location-input', () => ({
 ```
 
 **Global setup mocks (applied to all tests via `jest.setup.ts`):**
-
 - `next-auth/react` — `useSession` returns unauthenticated state
 - `@/auth` — `auth()` returns `null`
 - `global.fetch` — set to `jest.fn()`
 - `navigator.geolocation`, `navigator.vibrate`, `navigator.share`, `navigator.clipboard` — all mocked
 
 **What to Mock:**
-
 - All external API calls (Nominatim, OSRM) — never make real HTTP calls in tests
 - Database layer (`lib/database`, `lib/prisma`) — always mock Prisma client
 - `next-auth` and `@/auth` — always mock authentication
@@ -221,7 +199,6 @@ jest.mock('@/components/location-input', () => ({
 - `lib/services/*` in API route tests — mock entire service modules
 
 **What NOT to Mock:**
-
 - The module being tested itself
 - Pure utility functions (`lib/validation.ts`, `lib/geo.ts`) — test real implementations
 - Zod schemas — test real schema behavior in validation tests
@@ -229,12 +206,10 @@ jest.mock('@/components/location-input', () => ({
 ## Fixtures and Factories
 
 **JSON fixtures:**
-
 - Location: `__tests__/fixtures/uberSamples.json`
 - Used for static sample API response data
 
 **Inline factory functions in test files:**
-
 ```typescript
 // Factory pattern for building test data objects
 function createInsights(overrides: Partial<InsightsData> = {}) {
@@ -258,7 +233,6 @@ function createRequest(body: object, ip: string) {
 ```
 
 **Mock API response constants — defined at file scope:**
-
 ```typescript
 const MOCK_NOMINATIM_RESPONSE = [{ lat: '37.7749', lon: '-122.4194' }]
 const MOCK_OSRM_RESPONSE = {
@@ -268,7 +242,6 @@ const MOCK_OSRM_RESPONSE = {
 ```
 
 **Test coordinate fixtures defined as named constants:**
-
 ```typescript
 const COORDS = {
   regular: [-122.45, 37.75] as Coordinates,
@@ -282,7 +255,6 @@ const COORDS = {
 **Requirements:** No enforced coverage threshold configured in `jest.config.js`
 
 **View Coverage:**
-
 ```bash
 npm test -- --coverage
 ```
@@ -290,20 +262,17 @@ npm test -- --coverage
 ## Test Types
 
 **Unit Tests (`__tests__/lib/`, `__tests__/services/`):**
-
 - Test individual functions and class methods in isolation
 - Mock all dependencies
 - High granularity: one `it` per distinct behavior/branch
 - Include boundary conditions: empty arrays, null returns, max values
 
 **Integration Tests (`__tests__/api/`, `__tests__/components/`):**
-
 - API route tests: instantiate real `NextRequest`, import real route handler, mock service/DB layer
 - Component tests: use `@testing-library/react` `render()` with mocked children and hooks
 - Test full request/response cycle including status codes and JSON body
 
 **E2E Tests (`e2e/`):**
-
 - Playwright against real dev server (`http://localhost:3100`)
 - `page.route('**/api/compare-rides', ...)` used to intercept and stub API responses
 - All specs use `test.setTimeout(30000)` given cold dev-server start
@@ -313,7 +282,6 @@ npm test -- --coverage
 ## Common Patterns
 
 **Async Testing:**
-
 ```typescript
 // waitFor for eventual UI updates
 await waitFor(() => {
@@ -328,7 +296,6 @@ await expect(response.json()).resolves.toMatchObject({
 ```
 
 **Error Testing:**
-
 ```typescript
 // Typed error assertions with rejects.toMatchObject
 await expect(compareRidesByAddresses('Invalid Address', 'Oakland, CA')).rejects.toMatchObject({
@@ -342,14 +309,12 @@ await expect(response.json()).resolves.toMatchObject({ code: 'ADDRESS_NOT_FOUND'
 ```
 
 **Node environment for API route tests:**
-
 ```typescript
 /** @jest-environment node */
 // Required at top of API route test files to override jsdom default
 ```
 
 **Cache isolation between tests:**
-
 ```typescript
 beforeEach(() => {
   resetRideComparisonCaches() // exported test helper to clear module-level Maps
@@ -357,7 +322,6 @@ beforeEach(() => {
 ```
 
 **Regex matchers for text content:**
-
 ```typescript
 // Case-insensitive screen queries
 screen.getByLabelText(/pickup location/i)
@@ -371,4 +335,4 @@ await expect(response.json()).resolves.toMatchObject({
 
 ---
 
-_Testing analysis: 2026-03-10_
+*Testing analysis: 2026-03-10*

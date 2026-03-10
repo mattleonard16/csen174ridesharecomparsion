@@ -357,7 +357,8 @@ async function persistComparison(
   // Only persist exact route metrics to maintain database quality
   const persistedDistance =
     core.routeAccuracy === 'exact' ? kmToMiles(core.metrics.distanceKm) : undefined
-  const persistedDuration = core.routeAccuracy === 'exact' ? core.metrics.durationMin : undefined
+  const persistedDuration =
+    core.routeAccuracy === 'exact' ? core.metrics.durationMin : undefined
 
   const routeId = await findOrCreateRoute(
     pickupAddress,
@@ -563,14 +564,10 @@ async function geocodeWithCache(address: string): Promise<Coordinates> {
 
   const data = (await response.json()) as Array<{ lon: string; lat: string }>
   if (!data.length) {
-    throw new CompareServiceError(
-      'ADDRESS_NOT_FOUND',
-      `Address could not be resolved: ${address}`,
-      {
-        provider: 'nominatim',
-        phase: 'geocode',
-      }
-    )
+    throw new CompareServiceError('ADDRESS_NOT_FOUND', `Address could not be resolved: ${address}`, {
+      provider: 'nominatim',
+      phase: 'geocode',
+    })
   }
 
   const lon = parseFloat(data[0].lon) as Longitude
@@ -601,14 +598,10 @@ async function getRouteMetrics(
   const response = await fetchWithPolicy(url, ROUTE_FETCH_POLICY)
 
   if (!response.ok) {
-    throw new CompareServiceError(
-      'ROUTE_UNAVAILABLE',
-      `Routing provider returned ${response.status}`,
-      {
-        provider: 'osrm',
-        phase: 'route',
-      }
-    )
+    throw new CompareServiceError('ROUTE_UNAVAILABLE', `Routing provider returned ${response.status}`, {
+      provider: 'osrm',
+      phase: 'route',
+    })
   }
 
   const data: OSRMResponse = await response.json()
@@ -762,7 +755,9 @@ function buildUpstreamError(
   if (policy.phase === 'geocode') {
     return new CompareServiceError(
       timedOut ? 'GEOCODE_TIMEOUT' : 'GEOCODE_UNAVAILABLE',
-      timedOut ? 'Geocoding provider timed out' : 'Geocoding provider is temporarily unavailable',
+      timedOut
+        ? 'Geocoding provider timed out'
+        : 'Geocoding provider is temporarily unavailable',
       {
         provider: policy.provider,
         phase: policy.phase,
@@ -812,7 +807,8 @@ function getEstimatedRouteMetrics(pickup: Coordinates, destination: Coordinates)
   const roadFactor =
     straightLineKm < 3 ? 1.45 : straightLineKm < 10 ? 1.35 : straightLineKm < 30 ? 1.25 : 1.18
   const distanceKm = Math.max(0.8, Number((straightLineKm * roadFactor).toFixed(2)))
-  const averageSpeedKmh = distanceKm < 5 ? 22 : distanceKm < 15 ? 28 : distanceKm < 40 ? 36 : 48
+  const averageSpeedKmh =
+    distanceKm < 5 ? 22 : distanceKm < 15 ? 28 : distanceKm < 40 ? 36 : 48
   const durationMin = Math.max(4, Number(((distanceKm / averageSpeedKmh) * 60 + 3).toFixed(1)))
 
   const metrics: RouteMetrics = {

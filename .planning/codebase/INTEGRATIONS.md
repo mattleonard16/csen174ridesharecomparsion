@@ -5,7 +5,6 @@
 ## APIs & External Services
 
 **Geocoding:**
-
 - Nominatim (OpenStreetMap) - Convert addresses to coordinates
   - Endpoint: `https://nominatim.openstreetmap.org/search`
   - Auth: None (public API, User-Agent header required: `RideCompareApp/1.0`)
@@ -14,7 +13,6 @@
   - PWA cache: NetworkFirst, 1 day, 50 entries max
 
 **Routing:**
-
 - OSRM (Open Source Routing Machine) - Driving distance and duration
   - Endpoint: `https://router.project-osrm.org/route/v1/driving`
   - Auth: None (public API)
@@ -24,7 +22,6 @@
   - PWA cache: NetworkFirst, 1 hour, 50 entries max
 
 **Map Tiles:**
-
 - CARTO Basemap - Vector map tiles for MapLibre GL
   - Endpoint: `https://basemaps.cartocdn.com` (light/dark variants)
   - Auth: None (public CDN)
@@ -32,7 +29,6 @@
   - Used in: `components/ui/map.tsx`, `components/RouteMapClient.tsx`
 
 **AI/LLM:**
-
 - Anthropic Claude (claude-haiku-4-5-20251001) - Natural language recommendation enhancement
   - SDK: `@anthropic-ai/sdk` 0.74.x
   - Auth: `ANTHROPIC_API_KEY` env var
@@ -43,7 +39,6 @@
   - Model params: `max_tokens: 150 * n_recommendations`, `temperature: 0.3`
 
 **Bot Protection:**
-
 - Google reCAPTCHA Enterprise - POST endpoint bot protection
   - Assessment endpoint: `https://recaptchaenterprise.googleapis.com/v1/projects/{projectId}/assessments`
   - Auth: `RECAPTCHA_API_KEY` (Google Cloud API key), `RECAPTCHA_PROJECT_ID`, `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`
@@ -53,7 +48,6 @@
   - Falls through to allow in development when keys are absent
 
 **Logging/Observability:**
-
 - Axiom - Structured log ingestion (optional)
   - Endpoint: `https://api.axiom.co/v1/datasets/{dataset}/ingest`
   - Auth: `AXIOM_TOKEN` + `AXIOM_DATASET` env vars
@@ -66,7 +60,6 @@
   - Currently a no-op in production
 
 **Analytics:**
-
 - Vercel Analytics - Page/event tracking
   - SDK: `@vercel/analytics` 1.5.x
   - Injected via `app/layout.tsx`
@@ -75,7 +68,6 @@
 ## Data Storage
 
 **Databases:**
-
 - PostgreSQL 16 (primary)
   - ORM: Prisma 6.x with custom client output at `lib/generated/prisma`
   - Import client from: `lib/prisma.ts` (never import directly from generated folder)
@@ -86,7 +78,6 @@
   - Schema: `prisma/schema.prisma`
 
 **Models:**
-
 - `Route` - Pickup/destination with geohash clustering (precision 8)
 - `PriceSnapshot` - Historical price data with surge multipliers
 - `User` / `Account` / `Session` / `VerificationToken` - NextAuth.js tables
@@ -96,11 +87,9 @@
 - `RouteInsights` / `Recommendation` / `RecommendationAction` - AI recommendation pipeline
 
 **File Storage:**
-
 - None - No file upload or object storage configured
 
 **Caching:**
-
 - Upstash Redis (optional) - Distributed rate limiting across serverless instances
   - SDK: `@upstash/redis` + `@upstash/ratelimit`
   - Auth: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` env vars
@@ -117,7 +106,6 @@
 ## Authentication & Identity
 
 **Auth Provider:**
-
 - NextAuth.js v5 (beta) with Prisma Adapter
   - Config: `auth.ts` (root)
   - Strategy: JWT (not database sessions)
@@ -130,48 +118,40 @@
 ## Monitoring & Observability
 
 **Error Tracking:**
-
 - Sentry: stubbed but not active (`lib/monitoring.ts` line 62 TODO)
 - All errors logged via `logError()` which delegates to Axiom and console
 
 **Logs:**
-
 - Development: `console.debug` / `console.error` in `lib/monitoring.ts`
 - Production: Axiom via REST API when `AXIOM_TOKEN` + `AXIOM_DATASET` set
 - Log format: `{ timestamp, message, ...context }` (structured JSON)
 
 **Health Check:**
-
 - `lib/monitoring.ts` exports `healthCheck()` - checks DB (`DATABASE_URL` presence) and OSRM reachability
 
 ## CI/CD & Deployment
 
 **Hosting:**
-
 - Vercel (inferred from `@vercel/analytics`, `output: 'standalone'`, `vercel.json`)
 - `vercel.json` defines one cron: `GET /api/cron/cleanup` at `0 3 * * *` (03:00 UTC daily)
 
 **Docker:**
-
 - `Dockerfile` + `docker-compose.yml` present for self-hosted deployments
 - `docker-compose.yml` defines `web` (Next.js) + `db` (postgres:16-alpine) services
 - DB health check via `pg_isready` before web starts
 
 **CI Pipeline:**
-
 - Not detected (no GitHub Actions, CircleCI, etc. config files found)
 
 ## Environment Configuration
 
 **Required env vars:**
-
 - `DATABASE_URL` - Prisma pooled connection string
 - `DIRECT_URL` - Direct DB connection (for migrations)
 - `NEXTAUTH_SECRET` - JWT signing secret
 - `NEXTAUTH_URL` - Auth callback base URL (e.g., `http://localhost:3000`)
 
 **Optional env vars (degrade gracefully without them):**
-
 - `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` - Redis rate limiting (falls back to in-memory)
 - `ANTHROPIC_API_KEY` - Claude AI insights (falls back to templates)
 - `AI_DAILY_QUOTA` - Claude call budget (default 500)
@@ -181,20 +161,17 @@
 - `RATE_LIMIT_PER_HOUR` / `RATE_LIMIT_BURST` / `RATE_LIMIT_BURST_WINDOW` - Rate limit tuning
 
 **Secrets location:**
-
 - `.env.local` for local development (gitignored)
 - See `ENV_EXAMPLE.md` in project root for complete reference
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-
 - None detected beyond reCAPTCHA verification callbacks (client-side)
 
 **Outgoing:**
-
 - None detected (no webhook dispatch code found)
 
 ---
 
-_Integration audit: 2026-03-10_
+*Integration audit: 2026-03-10*
