@@ -71,6 +71,7 @@ const DefaultLoader = () => (
 function Map({ children, styles, ...props }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreGL.Map | null>(null)
+  const currentStyleRef = useRef<MapStyleOption | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [isStyleLoaded, setIsStyleLoaded] = useState(false)
   const { resolvedTheme } = useTheme()
@@ -87,6 +88,7 @@ function Map({ children, styles, ...props }: MapProps) {
     if (!containerRef.current) return
 
     const mapStyle = resolvedTheme === 'dark' ? mapStyles.dark : mapStyles.light
+    currentStyleRef.current = mapStyle
 
     const mapInstance = new MapLibreGL.Map({
       container: containerRef.current,
@@ -98,33 +100,40 @@ function Map({ children, styles, ...props }: MapProps) {
       ...props,
     })
 
-    const styleDataHandler = () => setIsStyleLoaded(true)
     const loadHandler = () => {
       mapInstance.resize()
       setIsLoaded(true)
+      setIsStyleLoaded(Boolean(mapInstance.isStyleLoaded()))
     }
+    const styleLoadHandler = () => setIsStyleLoaded(true)
 
     mapInstance.on('load', loadHandler)
-    mapInstance.on('styledata', styleDataHandler)
+    mapInstance.on('style.load', styleLoadHandler)
     mapRef.current = mapInstance
 
     return () => {
       mapInstance.off('load', loadHandler)
-      mapInstance.off('styledata', styleDataHandler)
+      mapInstance.off('style.load', styleLoadHandler)
       mapInstance.remove()
       mapRef.current = null
+      currentStyleRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    if (mapRef.current) {
-      setIsStyleLoaded(false)
-      mapRef.current.setStyle(resolvedTheme === 'dark' ? mapStyles.dark : mapStyles.light, {
-        diff: true,
-      })
+    const mapInstance = mapRef.current
+    if (!mapInstance || !isLoaded) return
+
+    const nextStyle = resolvedTheme === 'dark' ? mapStyles.dark : mapStyles.light
+    if (currentStyleRef.current === nextStyle) {
+      return
     }
-  }, [resolvedTheme, mapStyles])
+
+    currentStyleRef.current = nextStyle
+    setIsStyleLoaded(false)
+    mapInstance.setStyle(nextStyle, { diff: false })
+  }, [isLoaded, resolvedTheme, mapStyles])
 
   const isLoading = !isLoaded || !isStyleLoaded
 
