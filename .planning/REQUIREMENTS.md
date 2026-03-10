@@ -18,7 +18,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **OBSV-01**: Health check endpoint probes real database connectivity with measured latency
 - [ ] **OBSV-02**: Health check endpoint probes Redis connectivity with measured latency
 - [ ] **OBSV-03**: Error tracking captures production errors via Axiom (Sentry stub replaced with @axiomhq/nextjs)
-- [ ] **OBSV-04**: Cache operations log hit/miss ratios observable in Axiom
+- [x] **OBSV-04**: Cache operations log hit/miss ratios observable in Axiom
 
 ### Infrastructure
 
@@ -89,7 +89,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OBSV-01 | Phase 1 | Pending |
 | OBSV-02 | Phase 1 | Pending |
 | OBSV-03 | Phase 1 | Pending |
-| OBSV-04 | Phase 1 | Pending |
+| OBSV-04 | Phase 1 | Complete |
 | INFR-01 | Phase 2 | Pending |
 | INFR-02 | Phase 2 | Pending |
 | INFR-03 | Phase 2 | Pending |

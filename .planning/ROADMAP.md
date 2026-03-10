@@ -6,7 +6,7 @@ This milestone is a focused reliability pass on a working app. The existing code
 
 ## Phases
 
-- [ ] **Phase 1: Foundation** - Fix Jest infrastructure and wire real observability (health checks, error tracking, cache telemetry)
+- [x] **Phase 1: Foundation** - Fix Jest infrastructure and wire real observability (health checks, error tracking, cache telemetry) (completed 2026-03-10)
 - [ ] **Phase 2: Redis Cache Layer** - Migrate all in-memory caches to Redis-backed L1+L2 so data survives serverless cold starts
 - [ ] **Phase 3: AI Consolidation & Code Quality** - Remove Anthropic SDK, consolidate to OpenAI, replace any types, unify constants and request formats
 - [ ] **Phase 4: Alert Delivery & E2E Coverage** - Evaluate price alerts after each comparison and surface in-app notifications; E2E test covers the full comparison flow
@@ -69,7 +69,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/3 | In Progress|  |
+| 1. Foundation | 3/3 | Complete   | 2026-03-10 |
 | 2. Redis Cache Layer | 0/? | Not started | - |
 | 3. AI Consolidation & Code Quality | 0/? | Not started | - |
 | 4. Alert Delivery & E2E Coverage | 0/? | Not started | - |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-foundation 01-01-PLAN.md
-last_updated: "2026-03-10T19:27:12.284Z"
+stopped_at: Completed 01-02-PLAN.md — Redis health check + Sentry stub removal
+last_updated: "2026-03-10T19:30:17.730Z"
 last_activity: 2026-03-10 — Roadmap created; phases derived from 19 v1 requirements
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 3
   percent: 33
 ---
 
@@ -51,6 +51,8 @@ Progress: [███░░░░░░░] 33%
 
 *Updated after each plan completion*
 | Phase 01-foundation P01 | 2 | 2 tasks | 2 files |
+| Phase 01-foundation P03 | 4 | 1 tasks | 2 files |
+| Phase 01-foundation P02 | 5min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -65,6 +67,9 @@ Recent decisions affecting current work:
 - [Init]: Replace Sentry stub with @axiomhq/nextjs — Axiom already integrated, no new vendor
 - [Phase 01-foundation]: No coverageThreshold added — pre-existing code would fail CI immediately if threshold enforced
 - [Phase 01-foundation]: Coverage excludes lib/generated/** and lib/prisma.ts to avoid Prisma client noise in reports
+- [Phase 01-foundation]: Include routeAccuracy in COMPARISON_CACHE key to prevent estimated and exact route results from colliding
+- [Phase 01-foundation]: Redis health check returns healthy: false (not error) when unconfigured — graceful degradation per OBSV-02
+- [Phase 01-foundation]: logError() hardcodes level: error to Axiom regardless of caller-supplied level — satisfies OBSV-03
 
 ### Pending Todos
 
@@ -78,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T19:27:12.283Z
-Stopped at: Completed 01-foundation 01-01-PLAN.md
+Last session: 2026-03-10T19:30:17.728Z
+Stopped at: Completed 01-02-PLAN.md — Redis health check + Sentry stub removal
 Resume file: None
