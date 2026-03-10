@@ -7,7 +7,7 @@ const createJestConfig = nextJest({
 
 // Add any custom config to be passed to Jest
 const customJestConfig = {
-  setupFilesAfterSetup: ['<rootDir>/jest.setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
@@ -29,10 +29,14 @@ const customJestConfig = {
   ],
   collectCoverageFrom: [
     'app/api/**/*.{ts,tsx}',
-    'lib/services/**/*.{ts,tsx}',
-    'lib/monitoring.ts',
+    'components/**/*.{ts,tsx}',
+    'lib/**/*.{ts,tsx}',
+    'hooks/**/*.{ts,tsx}',
     '!**/*.d.ts',
+    '!lib/generated/**',
+    '!lib/prisma.ts',
   ],
+  coverageProvider: 'v8',
   coverageReporters: ['text', 'lcov'],
 }
 
