@@ -1,3 +1,5 @@
+/** @jest-environment node */
+
 import { compareRidesByAddresses, compareRidesByCoordinates } from '@/lib/services/ride-comparison'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { auth } from '@/auth'
@@ -315,7 +317,7 @@ describe('/api/compare-rides route', () => {
     expect(payload.pickupCoords).toEqual(comparisonFixture.pickup)
   })
 
-  it('uses the address comparison path for legacy payloads', async () => {
+  it('rejects legacy string format payloads with 400', async () => {
     const request = new MockRequest('http://localhost/api/compare-rides', {
       method: 'POST',
       body: JSON.stringify({
@@ -328,18 +330,12 @@ describe('/api/compare-rides route', () => {
     })
 
     const response = await POST(request)
+    const payload = await response.json()
 
-    expect(response.status).toBe(200)
-    expect(mockCompareRidesByAddresses).toHaveBeenCalledWith(
-      'San Francisco, CA',
-      'Oakland, CA',
-      ['uber', 'lyft', 'taxi', 'waymo'],
-      expect.any(Date),
-      expect.objectContaining({
-        userId: 'user-123',
-        persist: true,
-      })
-    )
+    expect(response.status).toBe(400)
+    expect(payload.error).toContain('Invalid request format')
+    expect(mockCompareRidesByAddresses).not.toHaveBeenCalled()
+    expect(mockCompareRidesByCoordinates).not.toHaveBeenCalled()
   })
 
   it('rejects suspiciously close coordinate routes', async () => {
@@ -378,8 +374,16 @@ describe('/api/compare-rides route', () => {
     const request = new MockRequest('http://localhost/api/compare-rides', {
       method: 'POST',
       body: JSON.stringify({
-        pickup: 'San Francisco, CA',
-        destination: 'Oakland, CA',
+        from: {
+          name: 'San Francisco, CA',
+          lat: '37.7749',
+          lng: '-122.4194',
+        },
+        to: {
+          name: 'Oakland, CA',
+          lat: '37.8044',
+          lng: '-122.2711',
+        },
       }),
       headers: {
         'Content-Type': 'application/json',

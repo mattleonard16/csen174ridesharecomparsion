@@ -190,17 +190,31 @@ export default function RideComparisonForm({
 
   useEffect(() => {
     if (selectedRoute) {
+      const precomputed = findPrecomputedRouteByAddresses(
+        selectedRoute.pickup,
+        selectedRoute.destination
+      )
+
       const submitForm = async () => {
+        const pickupCoordinates = precomputed
+          ? (precomputed.pickup.coordinates as Coordinates)
+          : null
+        const destinationCoordinates = precomputed
+          ? (precomputed.destination.coordinates as Coordinates)
+          : null
+
         setPickup(selectedRoute.pickup)
         setDestination(selectedRoute.destination)
-        setPickupCoords(null)
-        setDestinationCoords(null)
+        setPickupCoords(pickupCoordinates)
+        setDestinationCoords(destinationCoordinates)
         setShowForm(true)
         setLocalError('')
         clearComparisonError()
         const wasSuccessful = await submitComparison({
           pickup: selectedRoute.pickup,
           destination: selectedRoute.destination,
+          pickupCoords: pickupCoordinates,
+          destinationCoords: destinationCoordinates,
           getRecaptchaToken,
         })
 
@@ -209,11 +223,7 @@ export default function RideComparisonForm({
         }
       }
 
-      const isPrecomputed = findPrecomputedRouteByAddresses(
-        selectedRoute.pickup,
-        selectedRoute.destination
-      )
-      const delay = isPrecomputed ? AUTO_SUBMIT_DELAY_PRECOMPUTED_MS : AUTO_SUBMIT_DELAY_DYNAMIC_MS
+      const delay = precomputed ? AUTO_SUBMIT_DELAY_PRECOMPUTED_MS : AUTO_SUBMIT_DELAY_DYNAMIC_MS
       const timeoutId = setTimeout(submitForm, delay)
 
       onRouteProcessed?.()
