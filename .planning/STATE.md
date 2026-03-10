@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 03-01-PLAN.md — type safety and constants consolidation
-last_updated: "2026-03-10T21:14:41.161Z"
+stopped_at: Completed 03-02-PLAN.md — AI SDK consolidation (Anthropic to OpenAI)
+last_updated: "2026-03-10T21:20:58.121Z"
 last_activity: 2026-03-10 — Roadmap created; phases derived from 19 v1 requirements
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 33
 ---
 
@@ -57,6 +57,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 02-redis-cache-layer P03 | 4min | 3 tasks | 4 files |
 | Phase 02-redis-cache-layer P02 | 11min | 2 tasks | 2 files |
 | Phase 03-ai-consolidation-code-quality P01 | 15min | 2 tasks | 8 files |
+| Phase 03-ai-consolidation-code-quality P02 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - [Phase 03-ai-consolidation-code-quality]: Cast-to-never at Prisma JSON field sites for ComparisonResults — preserves type safety at function signature level while satisfying InputJsonValue constraint
 - [Phase 03-ai-consolidation-code-quality]: DEFAULT_SERVICES exported from lib/constants.ts — all consumer files import, no local definitions
 - [Phase 03-ai-consolidation-code-quality]: All external API base URLs (Nominatim, OSRM) centralized in API_CONFIG in lib/constants.ts
+- [Phase 03-ai-consolidation-code-quality]: OpenAI gpt-4o-mini replaces claude-haiku-4-5-20251001 — consolidates to single AI vendor
+- [Phase 03-ai-consolidation-code-quality]: ENV_EXAMPLE.md created (did not exist before) to satisfy CLAUDE.md reference and document OPENAI_API_KEY
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T21:14:41.160Z
-Stopped at: Completed 03-01-PLAN.md — type safety and constants consolidation
+Last session: 2026-03-10T21:20:58.119Z
+Stopped at: Completed 03-02-PLAN.md — AI SDK consolidation (Anthropic to OpenAI)
 Resume file: None

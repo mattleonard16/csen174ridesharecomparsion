@@ -28,7 +28,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **INFR-04**: Recommendations cache persists across serverless instances via Redis with TTL
 - [x] **INFR-05**: AI response cache persists across serverless instances via Redis with TTL
 - [x] **INFR-06**: AI quota tracking uses Redis atomic counters (INCR + EXPIREAT) with daily TTL
-- [ ] **INFR-07**: AI insight generation uses OpenAI only (Anthropic SDK dependency removed)
+- [x] **INFR-07**: AI insight generation uses OpenAI only (Anthropic SDK dependency removed)
 
 ### Core Features
 
@@ -96,7 +96,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFR-04 | Phase 2 | Complete |
 | INFR-05 | Phase 2 | Complete |
 | INFR-06 | Phase 2 | Complete |
-| INFR-07 | Phase 3 | Pending |
+| INFR-07 | Phase 3 | Complete |
 | FEAT-01 | Phase 4 | Pending |
 | FEAT-02 | Phase 3 | Pending |
 | QUAL-01 | Phase 3 | Complete |
