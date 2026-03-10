@@ -56,7 +56,12 @@ Plans:
   3. `COMMON_PLACES` / `DEFAULT_SERVICES` appears in exactly one file (`lib/constants.ts`) — no duplicates
   4. All external API base URLs (Nominatim, OSRM) are referenced through `API_CONFIG` — no hardcoded strings in service files
   5. The compare-rides API rejects the legacy string request format and accepts only the coordinate format — confirmed by an updated unit test
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Fix any types in database-logging.ts, consolidate DEFAULT_SERVICES to lib/constants.ts, replace hardcoded API URLs with API_CONFIG references
+- [ ] 03-02-PLAN.md — Swap Anthropic SDK for OpenAI in ai-insights.ts, update test mock, uninstall @anthropic-ai/sdk
+- [ ] 03-03-PLAN.md — Remove legacy string request format from compare-rides handler and hook, update test to assert 400
 
 ### Phase 4: Alert Delivery & E2E Coverage
 **Goal**: Saved price alerts actually fire in-app when prices drop below target, and a Playwright test confirms the full comparison flow works end-to-end
@@ -76,5 +81,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-03-10 |
 | 2. Redis Cache Layer | 0/3 | Not started | - |
-| 3. AI Consolidation & Code Quality | 0/? | Not started | - |
+| 3. AI Consolidation & Code Quality | 0/3 | Not started | - |
 | 4. Alert Delivery & E2E Coverage | 0/? | Not started | - |
