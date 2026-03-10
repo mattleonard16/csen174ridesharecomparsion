@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-01-PLAN.md — getCached L1+L2 wrapper and incrementQuotaCounter
-last_updated: "2026-03-10T20:36:42.011Z"
+stopped_at: Completed 02-03-PLAN.md — recommendations and AI cache migration
+last_updated: "2026-03-10T20:43:21.027Z"
 last_activity: 2026-03-10 — Roadmap created; phases derived from 19 v1 requirements
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 33
 ---
 
@@ -54,6 +54,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 01-foundation P03 | 4 | 1 tasks | 2 files |
 | Phase 01-foundation P02 | 5min | 1 tasks | 2 files |
 | Phase 02-redis-cache-layer P01 | 5min | 2 tasks | 2 files |
+| Phase 02-redis-cache-layer P03 | 4min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Recent decisions affecting current work:
 - [Phase 02-redis-cache-layer]: Getter-based jest.mock factory allows per-test mock reassignment without jest.resetModules overhead
 - [Phase 02-redis-cache-layer]: Array.from(store.entries()) for Map for-of iteration satisfies TypeScript downlevelIteration without tsconfig changes
 - [Phase 02-redis-cache-layer]: incrementQuotaCounter omits dailyLimitSeconds param — limit enforcement is caller responsibility
+- [Phase 02-redis-cache-layer]: Single TTL (7200s) for both AI and template responses — templates are deterministic and safe to cache at 2 hours
+- [Phase 02-redis-cache-layer]: incrementQuotaCounter inside getCached compute — quota only increments on cache miss, not cache hit
 
 ### Pending Todos
 
@@ -87,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T20:36:42.010Z
-Stopped at: Completed 02-01-PLAN.md — getCached L1+L2 wrapper and incrementQuotaCounter
+Last session: 2026-03-10T20:43:21.026Z
+Stopped at: Completed 02-03-PLAN.md — recommendations and AI cache migration
 Resume file: None
