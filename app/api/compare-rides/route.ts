@@ -7,7 +7,6 @@ import {
   RideComparisonRequestSchema,
   detectSuspiciousCoordinates,
   detectSpamPatterns,
-  sanitizeString,
 } from '@/lib/validation'
 import { verifyRecaptchaToken, RECAPTCHA_CONFIG } from '@/lib/recaptcha'
 import {
@@ -24,9 +23,7 @@ import { log, logError } from '@/lib/monitoring'
 import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 import type {
   ComparisonApiResponse,
-  ComparisonRequestBody,
   CoordinateComparisonRequest,
-  LegacyComparisonRequest,
   ServiceType,
 } from '@/types'
 
@@ -103,24 +100,11 @@ function normaliseServices(services?: ServiceType[]): ServiceType[] {
   return services && services.length > 0 ? Array.from(new Set(services)) : DEFAULT_SERVICES
 }
 
-function isLegacyRequest(body: unknown): body is LegacyComparisonRequest {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    typeof (body as LegacyComparisonRequest).pickup === 'string' &&
-    typeof (body as LegacyComparisonRequest).destination === 'string'
-  )
-}
-
 function isCoordinateRequest(body: unknown): body is CoordinateComparisonRequest {
   return typeof body === 'object' && body !== null && 'from' in body && 'to' in body
 }
 
-function isPrecomputedRequest(body: ComparisonRequestBody): boolean {
-  if (isLegacyRequest(body)) {
-    return !!findPrecomputedRouteByAddresses(body.pickup, body.destination)
-  }
-
+function isPrecomputedRequest(body: CoordinateComparisonRequest): boolean {
   return !!findPrecomputedRouteByAddresses(body.from.name, body.to.name)
 }
 
@@ -221,11 +205,11 @@ async function handlePost(request: NextRequest) {
   const requestId = getRequestId(request)
 
   try {
-    const body = (await request.json()) as ComparisonRequestBody
+    const body = (await request.json()) as unknown
 
-    if (!isLegacyRequest(body) && !isCoordinateRequest(body)) {
+    if (!isCoordinateRequest(body)) {
       return NextResponse.json(
-        { error: 'Invalid input' },
+        { error: 'Invalid request format. Use coordinate request format with from/to fields.' },
         { status: 400, headers: createResponseHeaders(requestId) }
       )
     }
@@ -280,109 +264,69 @@ async function handlePost(request: NextRequest) {
     const sessionId = request.headers.get('x-session-id') ?? undefined
     const timestamp = new Date()
 
-    if (isCoordinateRequest(body) && !isLegacyRequest(body)) {
-      const validation = validateInput(
-        RideComparisonRequestSchema,
-        {
-          from: body.from,
-          to: body.to,
-          services: normaliseServices(body.services),
-        },
-        'ride comparison request'
-      )
+    const validation = validateInput(
+      RideComparisonRequestSchema,
+      {
+        from: body.from,
+        to: body.to,
+        services: normaliseServices(body.services),
+      },
+      'ride comparison request'
+    )
 
-      if (!validation.success) {
-        return NextResponse.json(
-          {
-            error: 'Invalid input',
-            details: validation.errors.map(err => ({
-              field: err.field,
-              message: err.message,
-            })),
-          },
-          { status: 400, headers: createResponseHeaders(requestId) }
-        )
-      }
-
-      const requestData = validation.data
-      const fromName = requestData.from.name
-      const toName = requestData.to.name
-
-      if (detectSpamPatterns(fromName) || detectSpamPatterns(toName)) {
-        return NextResponse.json(
-          { error: 'Invalid location names detected' },
-          { status: 400, headers: createResponseHeaders(requestId) }
-        )
-      }
-
-      if (
-        detectSuspiciousCoordinates(
-          { lat: requestData.from.lat, lng: requestData.from.lng },
-          { lat: requestData.to.lat, lng: requestData.to.lng }
-        )
-      ) {
-        return NextResponse.json(
-          { error: 'Invalid route: pickup and destination are too close' },
-          { status: 400, headers: createResponseHeaders(requestId) }
-        )
-      }
-
-      const comparisons = await compareRidesByCoordinates(
-        {
-          name: requestData.from.name,
-          coordinates: [parseFloat(requestData.from.lng), parseFloat(requestData.from.lat)],
-        },
-        {
-          name: requestData.to.name,
-          coordinates: [parseFloat(requestData.to.lng), parseFloat(requestData.to.lat)],
-        },
-        requestData.services,
-        timestamp,
-        {
-          userId: authenticatedUserId,
-          sessionId,
-          persist: true,
-          pickupAddress: requestData.from.name,
-          destinationAddress: requestData.to.name,
-        }
-      )
-
-      const aiRecommendations = await resolveAiRecommendations(
-        comparisons.routeId,
-        authenticatedUserId
-      )
-
-      return NextResponse.json(buildComparisonResponse(comparisons, aiRecommendations), {
-        headers: createResponseHeaders(requestId),
-      })
-    }
-
-    const sanitizedPickup = sanitizeString(body.pickup)
-    const sanitizedDestination = sanitizeString(body.destination)
-
-    if (!sanitizedPickup || !sanitizedDestination) {
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Pickup and destination are required' },
+        {
+          error: 'Invalid input',
+          details: validation.errors.map(err => ({
+            field: err.field,
+            message: err.message,
+          })),
+        },
         { status: 400, headers: createResponseHeaders(requestId) }
       )
     }
 
-    if (detectSpamPatterns(sanitizedPickup) || detectSpamPatterns(sanitizedDestination)) {
+    const requestData = validation.data
+    const fromName = requestData.from.name
+    const toName = requestData.to.name
+
+    if (detectSpamPatterns(fromName) || detectSpamPatterns(toName)) {
       return NextResponse.json(
         { error: 'Invalid location names detected' },
         { status: 400, headers: createResponseHeaders(requestId) }
       )
     }
 
-    const comparisons = await compareRidesByAddresses(
-      sanitizedPickup,
-      sanitizedDestination,
-      normaliseServices(body.services),
+    if (
+      detectSuspiciousCoordinates(
+        { lat: requestData.from.lat, lng: requestData.from.lng },
+        { lat: requestData.to.lat, lng: requestData.to.lng }
+      )
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid route: pickup and destination are too close' },
+        { status: 400, headers: createResponseHeaders(requestId) }
+      )
+    }
+
+    const comparisons = await compareRidesByCoordinates(
+      {
+        name: requestData.from.name,
+        coordinates: [parseFloat(requestData.from.lng), parseFloat(requestData.from.lat)],
+      },
+      {
+        name: requestData.to.name,
+        coordinates: [parseFloat(requestData.to.lng), parseFloat(requestData.to.lat)],
+      },
+      requestData.services,
       timestamp,
       {
         userId: authenticatedUserId,
         sessionId,
         persist: true,
+        pickupAddress: requestData.from.name,
+        destinationAddress: requestData.to.name,
       }
     )
 

@@ -5,7 +5,7 @@ import { getClientSessionId } from '@/lib/client-session'
 import { DEFAULT_SERVICES } from '@/lib/constants'
 import type {
   ComparisonApiResponse,
-  ComparisonRequestBody,
+  CoordinateComparisonRequest,
   Coordinates,
   ServiceType,
 } from '@/types'
@@ -23,27 +23,22 @@ interface SubmitComparisonInput {
 function buildRequestBody(
   input: SubmitComparisonInput,
   recaptchaToken: string
-): ComparisonRequestBody {
-  if (input.pickupCoords && input.destinationCoords) {
-    return {
-      from: {
-        name: input.pickup,
-        lat: String(input.pickupCoords[1]),
-        lng: String(input.pickupCoords[0]),
-      },
-      to: {
-        name: input.destination,
-        lat: String(input.destinationCoords[1]),
-        lng: String(input.destinationCoords[0]),
-      },
-      services: DEFAULT_SERVICES,
-      recaptchaToken,
-    }
+): CoordinateComparisonRequest {
+  if (!input.pickupCoords || !input.destinationCoords) {
+    throw new Error('Coordinates are required. Please select a location from the suggestions.')
   }
 
   return {
-    pickup: input.pickup,
-    destination: input.destination,
+    from: {
+      name: input.pickup,
+      lat: String(input.pickupCoords[1]),
+      lng: String(input.pickupCoords[0]),
+    },
+    to: {
+      name: input.destination,
+      lat: String(input.destinationCoords[1]),
+      lng: String(input.destinationCoords[0]),
+    },
     services: DEFAULT_SERVICES,
     recaptchaToken,
   }
