@@ -83,31 +83,31 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| OBSV-01 | — | Pending |
-| OBSV-02 | — | Pending |
-| OBSV-03 | — | Pending |
-| OBSV-04 | — | Pending |
-| INFR-01 | — | Pending |
-| INFR-02 | — | Pending |
-| INFR-03 | — | Pending |
-| INFR-04 | — | Pending |
-| INFR-05 | — | Pending |
-| INFR-06 | — | Pending |
-| INFR-07 | — | Pending |
-| FEAT-01 | — | Pending |
-| FEAT-02 | — | Pending |
-| QUAL-01 | — | Pending |
-| QUAL-02 | — | Pending |
-| QUAL-03 | — | Pending |
+| TEST-01 | Phase 1 | Pending |
+| TEST-02 | Phase 1 | Pending |
+| TEST-03 | Phase 4 | Pending |
+| OBSV-01 | Phase 1 | Pending |
+| OBSV-02 | Phase 1 | Pending |
+| OBSV-03 | Phase 1 | Pending |
+| OBSV-04 | Phase 1 | Pending |
+| INFR-01 | Phase 2 | Pending |
+| INFR-02 | Phase 2 | Pending |
+| INFR-03 | Phase 2 | Pending |
+| INFR-04 | Phase 2 | Pending |
+| INFR-05 | Phase 2 | Pending |
+| INFR-06 | Phase 2 | Pending |
+| INFR-07 | Phase 3 | Pending |
+| FEAT-01 | Phase 4 | Pending |
+| FEAT-02 | Phase 3 | Pending |
+| QUAL-01 | Phase 3 | Pending |
+| QUAL-02 | Phase 3 | Pending |
+| QUAL-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 ⚠️
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 — traceability populated after roadmap creation*
