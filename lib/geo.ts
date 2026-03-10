@@ -63,3 +63,25 @@ export function getNeighborPrefixes(hash: string, precision: number): string[] {
 export function getDefaultPrecision(): number {
   return DEFAULT_GEOHASH_PRECISION
 }
+
+/**
+ * Calculate the great-circle distance between two [lon, lat] coordinates
+ * using the Haversine formula. Returns distance in kilometers.
+ */
+export function haversineDistanceKm(from: [number, number], to: [number, number]): number {
+  const toRadians = (value: number) => (value * Math.PI) / 180
+  const [fromLon, fromLat] = from
+  const [toLon, toLat] = to
+
+  const deltaLat = toRadians(toLat - fromLat)
+  const deltaLon = toRadians(toLon - fromLon)
+  const originLat = toRadians(fromLat)
+  const destinationLat = toRadians(toLat)
+
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(originLat) * Math.cos(destinationLat) * Math.sin(deltaLon / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+  return 6371 * c
+}

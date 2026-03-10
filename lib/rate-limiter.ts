@@ -311,6 +311,8 @@ type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
  */
 export function withRateLimit(handler: Handler): Handler {
   return async (req: NextRequest) => {
+    const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID()
+
     // Periodic cleanup (1% chance per request, runs for ALL traffic including 429s)
     if (Math.random() < 0.01) {
       cleanupRateLimiters()
@@ -329,6 +331,7 @@ export function withRateLimit(handler: Handler): Handler {
         {
           status: 429,
           headers: {
+            'x-request-id': requestId,
             'Retry-After': retryAfter.toString(),
             'X-RateLimit-Remaining': result.remainingRequests.toString(),
             'X-RateLimit-Reset': result.resetTime.toString(),
@@ -341,6 +344,9 @@ export function withRateLimit(handler: Handler): Handler {
     const response = await handler(req)
 
     // Add rate limit headers to successful responses
+    if (!response.headers.has('x-request-id')) {
+      response.headers.set('x-request-id', requestId)
+    }
     response.headers.set('X-RateLimit-Remaining', result.remainingRequests.toString())
     response.headers.set('X-RateLimit-Reset', result.resetTime.toString())
 
