@@ -1,5 +1,20 @@
 import { enhanceWithAI } from '@/lib/services/ai-insights'
 import type { AIRecommendation } from '@/types'
+import { getCached, incrementQuotaCounter } from '@/lib/cache/redis-cache'
+
+// Mock redis-cache — pass-through by default (cache miss: always call compute)
+jest.mock('@/lib/cache/redis-cache', () => ({
+  getCached: jest.fn(async (_key: string, _ttl: number, compute: () => Promise<unknown>) => ({
+    value: await compute(),
+    cacheHit: false,
+  })),
+  incrementQuotaCounter: jest.fn().mockResolvedValue(1),
+}))
+
+const mockGetCached = getCached as jest.MockedFunction<typeof getCached>
+const mockIncrementQuotaCounter = incrementQuotaCounter as jest.MockedFunction<
+  typeof incrementQuotaCounter
+>
 
 // Mock Anthropic SDK
 jest.mock('@anthropic-ai/sdk', () => {
@@ -59,6 +74,15 @@ describe('AI Insights Service', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     process.env = { ...originalEnv }
+    // Restore default pass-through (cache miss) behavior for getCached
+    mockGetCached.mockImplementation(
+      async (_key: string, _ttl: number, compute: () => Promise<unknown>) => ({
+        value: await compute(),
+        cacheHit: false,
+      })
+    )
+    // Restore default quota counter (within quota)
+    mockIncrementQuotaCounter.mockResolvedValue(1)
   })
 
   afterEach(() => {
@@ -167,5 +191,104 @@ describe('AI Insights Service', () => {
     expect(result[1].message).toContain('Lyft')
     expect(result[2].message).toContain('8 PM')
     expect(result[3].message).toContain('$47')
+  })
+
+  describe('quota counter', () => {
+    it('blocks AI call and uses templates when quota is exceeded', async () => {
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key'
+      // Return a count that exceeds AI_DAILY_QUOTA (default 500)
+      mockIncrementQuotaCounter.mockResolvedValue(501)
+
+      const Anthropic = jest.requireMock('@anthropic-ai/sdk') as jest.Mock
+      const mockCreate = Anthropic.mock.results[0]?.value?.messages?.create
+
+      const result = await enhanceWithAI(sampleRecommendations)
+
+      // incrementQuotaCounter should be called
+      expect(mockIncrementQuotaCounter).toHaveBeenCalledWith(
+        expect.stringMatching(/^quota:ai:\d{4}-\d{2}-\d{2}$/)
+      )
+
+      // AI client should NOT be called since quota exceeded
+      if (mockCreate) {
+        expect(mockCreate).not.toHaveBeenCalled()
+      }
+
+      // Template fallback should be used — DEPARTURE_TIME message contains price/time info
+      expect(result[0].message).toContain('2 PM')
+      expect(result[0].message).toContain('$12')
+    })
+
+    it('calls AI when quota is within limit — incrementQuotaCounter returns 1', async () => {
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key'
+      mockIncrementQuotaCounter.mockResolvedValue(1)
+
+      // Make Anthropic return parseable AI responses (3 lines for 3 recs)
+      const Anthropic = jest.requireMock('@anthropic-ai/sdk') as jest.Mock
+      const instance = new Anthropic()
+      instance.messages.create.mockResolvedValue({
+        content: [
+          {
+            type: 'text',
+            text: '1. Ride at 2 PM to save $12 on this trip.\n2. Switch to Lyft to save $3.50 on average.\n3. Surge ends by 8 PM — wait if you can.',
+          },
+        ],
+      })
+
+      // Re-instantiate with fresh mock
+      Anthropic.mockImplementation(() => instance)
+
+      const result = await enhanceWithAI(sampleRecommendations)
+
+      expect(mockIncrementQuotaCounter).toHaveBeenCalledWith(
+        expect.stringMatching(/^quota:ai:\d{4}-\d{2}-\d{2}$/)
+      )
+      expect(result).toHaveLength(3)
+    })
+
+    it('uses UTC date format for quota key', async () => {
+      delete process.env.ANTHROPIC_API_KEY
+
+      await enhanceWithAI(sampleRecommendations)
+
+      const expectedDate = new Date().toISOString().split('T')[0]
+      expect(mockIncrementQuotaCounter).toHaveBeenCalledWith(`quota:ai:${expectedDate}`)
+    })
+  })
+
+  describe('getCached integration', () => {
+    it('getCached hit path — compute not called — recommendations returned from cache', async () => {
+      const cachedMessages = [
+        'Cached message 1',
+        'Cached message 2',
+        'Cached message 3',
+      ]
+
+      // Simulate a cache hit — compute is never called
+      mockGetCached.mockResolvedValueOnce({ value: cachedMessages, cacheHit: true })
+
+      const result = await enhanceWithAI(sampleRecommendations)
+
+      expect(result).toHaveLength(3)
+      expect(result[0].message).toBe('Cached message 1')
+      expect(result[1].message).toBe('Cached message 2')
+      expect(result[2].message).toBe('Cached message 3')
+
+      // incrementQuotaCounter should NOT be called on a cache hit
+      // (it's inside the compute callback which wasn't invoked)
+      expect(mockIncrementQuotaCounter).not.toHaveBeenCalled()
+    })
+
+    it('getCached is called with ai: prefixed key and correct TTL', async () => {
+      delete process.env.ANTHROPIC_API_KEY
+
+      await enhanceWithAI(sampleRecommendations)
+
+      expect(mockGetCached).toHaveBeenCalledWith(
+        expect.stringMatching(/^ai:/),
+        7200,
+        expect.any(Function)
+      )
+    })
   })
 })
