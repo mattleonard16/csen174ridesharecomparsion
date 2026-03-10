@@ -23,7 +23,12 @@ This milestone is a focused reliability pass on a working app. The existing code
   3. `GET /api/health` returns a JSON response with measured latency for database and Redis connectivity
   4. A production 500 error is captured in Axiom as a structured log entry with `level: "error"` — no Sentry stub code remains
   5. Cache hit/miss events are visible as structured entries in Axiom logs
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Fix Jest config typo (setupFilesAfterEnv) and expand coverage globs; remove duplicate mocks
+- [ ] 01-02-PLAN.md — Add Redis health check to healthCheck(); replace Sentry stub in logError() with Axiom structured log
+- [ ] 01-03-PLAN.md — Instrument cache hit/miss paths with structured event fields in ride-comparison service
 
 ### Phase 2: Redis Cache Layer
 **Goal**: All caches survive Vercel cold starts — the same geocode, route, comparison, recommendation, and AI response data is served from Redis across all serverless instances
@@ -64,7 +69,7 @@ This milestone is a focused reliability pass on a working app. The existing code
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/? | Not started | - |
+| 1. Foundation | 0/3 | Not started | - |
 | 2. Redis Cache Layer | 0/? | Not started | - |
 | 3. AI Consolidation & Code Quality | 0/? | Not started | - |
 | 4. Alert Delivery & E2E Coverage | 0/? | Not started | - |
