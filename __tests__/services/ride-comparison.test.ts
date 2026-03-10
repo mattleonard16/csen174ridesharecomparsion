@@ -91,9 +91,11 @@ describe('ride-comparison service', () => {
         json: async () => [],
       })
 
-      await expect(compareRidesByAddresses('Invalid Address', 'Oakland, CA')).rejects.toMatchObject({
-        code: 'ADDRESS_NOT_FOUND',
-      })
+      await expect(compareRidesByAddresses('Invalid Address', 'Oakland, CA')).rejects.toMatchObject(
+        {
+          code: 'ADDRESS_NOT_FOUND',
+        }
+      )
     })
 
     it('should fail with a typed address error when destination geocoding returns no results', async () => {

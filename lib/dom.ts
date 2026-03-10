@@ -59,7 +59,8 @@ export function scrollToSection(sectionId: string, scrollContainer: ScrollContai
 
   const scrollHost = scrollContainer instanceof HTMLElement ? scrollContainer : null
   const existingRestore = scrollHost ? pendingSnapRestores.get(scrollHost) : null
-  const originalSnapType = existingRestore?.originalSnapType ?? scrollHost?.style.scrollSnapType ?? ''
+  const originalSnapType =
+    existingRestore?.originalSnapType ?? scrollHost?.style.scrollSnapType ?? ''
   existingRestore?.cancel()
 
   if (scrollHost) {
