@@ -39,7 +39,12 @@ Plans:
   2. Geocode, route, comparison, recommendation, and AI response caches each have a TTL visible in the Upstash console
   3. No service makes raw `redis.get` / `redis.set` calls — all caching goes through a single `getCached<T>` wrapper
   4. AI quota counter in Redis increments atomically — Upstash console shows a key like `quota:ai:YYYY-MM-DD` with a daily TTL
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Create getCached<T> wrapper (lib/cache/redis-cache.ts) with L1+L2 logic, incrementQuotaCounter, clearCacheNamespace; TDD with unit tests
+- [ ] 02-02-PLAN.md — Migrate GEOCODE_CACHE, ROUTE_CACHE, COMPARISON_CACHE in ride-comparison.ts to getCached; update resetRideComparisonCaches
+- [ ] 02-03-PLAN.md — Migrate REC_CACHE in recommendations.ts and AI_RESPONSE_CACHE + dailyCallCount in ai-insights.ts to getCached/incrementQuotaCounter
 
 ### Phase 3: AI Consolidation & Code Quality
 **Goal**: A single AI provider (OpenAI), no TypeScript `any` escapes in monitored paths, and no duplicated configuration constants or dual API request formats
@@ -70,6 +75,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete    | 2026-03-10 |
-| 2. Redis Cache Layer | 0/? | Not started | - |
+| 2. Redis Cache Layer | 0/3 | Not started | - |
 | 3. AI Consolidation & Code Quality | 0/? | Not started | - |
 | 4. Alert Delivery & E2E Coverage | 0/? | Not started | - |
