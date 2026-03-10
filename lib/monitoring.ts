@@ -1,25 +1,34 @@
 /**
  * Monitoring and observability utilities
- * Integrates with Sentry for error tracking and Axiom for structured logging
+ * Integrates with Axiom for structured logging
  */
 
 import { prisma } from '@/lib/prisma'
+import { redis } from '@/lib/redis'
 
 interface LogContext {
   userId?: string
   routeId?: string
   service?: string
-  [key: string]: any
+  level?: string
+  stack?: string
+  errorName?: string
+  duration?: number
+  metric?: string
+  [key: string]: string | number | boolean | undefined | null
 }
 
-interface ErrorContext extends LogContext {
+interface ErrorContext {
   error: Error
-  level?: 'error' | 'warning' | 'info'
+  userId?: string
+  routeId?: string
+  service?: string
+  [key: string]: unknown
 }
 
 /**
  * Structured logging utility
- * In production, sends to Axiom or similar service
+ * In production, sends to Axiom
  */
 export function log(message: string, context?: LogContext) {
   const timestamp = new Date().toISOString()
@@ -41,11 +50,11 @@ export function log(message: string, context?: LogContext) {
 }
 
 /**
- * Error tracking utility
- * In production, sends to Sentry
+ * Error tracking utility — always routes to Axiom structured logging
+ * No Sentry stub: the Sentry SDK is not installed in this project
  */
 export function logError(context: ErrorContext) {
-  const { error, level = 'error', ...rest } = context
+  const { error, ...rest } = context
 
   // Always log to console in development
   if (process.env.NODE_ENV === 'development') {
@@ -56,18 +65,11 @@ export function logError(context: ErrorContext) {
     })
   }
 
-  // Send to Sentry in production
-  if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
-    // Sentry would be initialized in _app.tsx or layout.tsx
-    // TODO: Integrate actual Sentry SDK when available
-    // import * as Sentry from '@sentry/nextjs'
-    // Sentry.captureException(error, { extra: rest, level })
-  }
-
-  // Also log to structured logging
+  // Route all errors to Axiom structured logging — no Sentry stub
   log(`Error: ${error.message}`, {
-    level,
+    level: 'error',
     stack: error.stack,
+    errorName: error.name,
     ...rest,
   })
 }
@@ -86,7 +88,7 @@ export function trackPerformance(metric: string, duration: number, context?: Log
 /**
  * Send logs to Axiom
  */
-async function sendToAxiom(logEntry: any) {
+async function sendToAxiom(logEntry: LogContext & { timestamp: string; message: string }) {
   const axiomToken = process.env.AXIOM_TOKEN
   const axiomDataset = process.env.AXIOM_DATASET
 
@@ -118,6 +120,7 @@ export async function healthCheck() {
     status: 'healthy' as 'healthy' | 'degraded' | 'unhealthy',
     checks: {
       database: await checkDatabase(),
+      redis: await checkRedis(),
       osrm: await checkOSRM(),
     },
   }
@@ -147,6 +150,24 @@ async function checkDatabase(): Promise<{ healthy: boolean; latency?: number; er
       healthy: false,
       latency: Date.now() - start,
       error: error instanceof Error ? error.message : 'Unknown database error',
+    }
+  }
+}
+
+async function checkRedis(): Promise<{ healthy: boolean; latency?: number; error?: string }> {
+  if (!redis) {
+    return { healthy: false, error: 'Redis not configured' }
+  }
+
+  const start = Date.now()
+  try {
+    await redis.ping()
+    return { healthy: true, latency: Date.now() - start }
+  } catch (error) {
+    return {
+      healthy: false,
+      latency: Date.now() - start,
+      error: error instanceof Error ? error.message : 'Unknown Redis error',
     }
   }
 }
