@@ -37,9 +37,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Code Quality
 
-- [ ] **QUAL-01**: TypeScript `any` types replaced with proper interfaces in database-logging, monitoring, and dashboard
-- [ ] **QUAL-02**: Duplicated COMMON_PLACES consolidated to single source in `lib/constants.ts`
-- [ ] **QUAL-03**: Hardcoded external API URLs centralized through API_CONFIG
+- [x] **QUAL-01**: TypeScript `any` types replaced with proper interfaces in database-logging, monitoring, and dashboard
+- [x] **QUAL-02**: Duplicated COMMON_PLACES consolidated to single source in `lib/constants.ts`
+- [x] **QUAL-03**: Hardcoded external API URLs centralized through API_CONFIG
 
 ## v2 Requirements
 
@@ -99,9 +99,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFR-07 | Phase 3 | Pending |
 | FEAT-01 | Phase 4 | Pending |
 | FEAT-02 | Phase 3 | Pending |
-| QUAL-01 | Phase 3 | Pending |
-| QUAL-02 | Phase 3 | Pending |
-| QUAL-03 | Phase 3 | Pending |
+| QUAL-01 | Phase 3 | Complete |
+| QUAL-02 | Phase 3 | Complete |
+| QUAL-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 19 total
