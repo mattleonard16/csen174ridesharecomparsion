@@ -2,20 +2,20 @@
  * AI Insights Service
  *
  * Transforms structured recommendation data into natural language
- * using Claude Haiku. Falls back to template strings if API is unavailable.
+ * using OpenAI gpt-4o-mini. Falls back to template strings if API is unavailable.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import type { AIRecommendation } from '@/types'
 import { getCached, incrementQuotaCounter } from '@/lib/cache/redis-cache'
 
 const AI_DAILY_QUOTA = parseInt(process.env.AI_DAILY_QUOTA ?? '500', 10) || 500
 const AI_CACHE_TTL_SECONDS = 7200 // 2 hours
 
-function getAnthropicClient(): Anthropic | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+function getOpenAIClient(): OpenAI | null {
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return null
-  return new Anthropic({ apiKey })
+  return new OpenAI({ apiKey })
 }
 
 /**
@@ -26,7 +26,7 @@ function buildCacheKey(recommendations: AIRecommendation[]): string {
 }
 
 /**
- * Build a prompt for Claude to generate natural language insights.
+ * Build a prompt for OpenAI to generate natural language insights.
  * Privacy: only sends aggregated stats, no PII or raw addresses.
  */
 function buildPrompt(recommendations: AIRecommendation[]): string {
@@ -96,7 +96,7 @@ function capitalize(s: string): string {
 
 /**
  * Enhance recommendations with AI-generated natural language messages.
- * Falls back to templates if Claude API is unavailable or quota exceeded.
+ * Falls back to templates if OpenAI API is unavailable or quota exceeded.
  *
  * @returns Updated recommendations with improved messages
  */
@@ -116,17 +116,17 @@ export async function enhanceWithAI(
       const currentCount = await incrementQuotaCounter(quotaKey)
       const withinQuota = currentCount <= AI_DAILY_QUOTA
 
-      const client = getAnthropicClient()
+      const client = getOpenAIClient()
       if (client && withinQuota) {
         try {
           const prompt = buildPrompt(recommendations)
-          const response = await client.messages.create({
-            model: 'claude-haiku-4-5-20251001',
+          const response = await client.chat.completions.create({
+            model: 'gpt-4o-mini',
             max_tokens: 150 * recommendations.length,
             temperature: 0.3,
             messages: [{ role: 'user', content: prompt }],
           })
-          const text = response.content[0].type === 'text' ? response.content[0].text : ''
+          const text = response.choices[0]?.message?.content ?? ''
           const lines = text
             .split('\n')
             .map(l => l.replace(/^\d+\.\s*/, '').trim())

@@ -16,18 +16,22 @@ const mockIncrementQuotaCounter = incrementQuotaCounter as jest.MockedFunction<
   typeof incrementQuotaCounter
 >
 
-// Mock Anthropic SDK
-jest.mock('@anthropic-ai/sdk', () => {
+// Mock OpenAI SDK
+jest.mock('openai', () => {
   return jest.fn().mockImplementation(() => ({
-    messages: {
-      create: jest.fn().mockResolvedValue({
-        content: [
-          {
-            type: 'text',
-            text: '1. Save $12 by riding at 2 PM instead.\n2. Switch to Lyft for this route to save 15% on average.\n3. Surge pricing typically drops after 8 PM.',
-          },
-        ],
-      }),
+    chat: {
+      completions: {
+        create: jest.fn().mockResolvedValue({
+          choices: [
+            {
+              message: {
+                content:
+                  '1. Save $12 by riding at 2 PM instead.\n2. Switch to Lyft for this route to save 15% on average.\n3. Surge pricing typically drops after 8 PM.',
+              },
+            },
+          ],
+        }),
+      },
     },
   }))
 })
@@ -90,7 +94,7 @@ describe('AI Insights Service', () => {
   })
 
   it('returns original messages when no API key is configured', async () => {
-    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
 
     const result = await enhanceWithAI(sampleRecommendations)
 
@@ -102,7 +106,7 @@ describe('AI Insights Service', () => {
   })
 
   it('returns template-enhanced messages when API key is set but SDK is mocked', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key'
+    process.env.OPENAI_API_KEY = 'sk-openai-test-key'
 
     const result = await enhanceWithAI(sampleRecommendations)
 
@@ -119,7 +123,7 @@ describe('AI Insights Service', () => {
   })
 
   it('preserves recommendation structure', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key'
+    process.env.OPENAI_API_KEY = 'sk-openai-test-key'
 
     const result = await enhanceWithAI(sampleRecommendations)
 
@@ -133,7 +137,7 @@ describe('AI Insights Service', () => {
   })
 
   it('uses template fallbacks when API key is missing', async () => {
-    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
 
     const recs: AIRecommendation[] = [
       {
@@ -152,7 +156,7 @@ describe('AI Insights Service', () => {
   })
 
   it('generates appropriate templates for each recommendation type', async () => {
-    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.OPENAI_API_KEY
 
     const allTypes: AIRecommendation[] = [
       {
@@ -195,12 +199,12 @@ describe('AI Insights Service', () => {
 
   describe('quota counter', () => {
     it('blocks AI call and uses templates when quota is exceeded', async () => {
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key'
+      process.env.OPENAI_API_KEY = 'sk-openai-test-key'
       // Return a count that exceeds AI_DAILY_QUOTA (default 500)
       mockIncrementQuotaCounter.mockResolvedValue(501)
 
-      const Anthropic = jest.requireMock('@anthropic-ai/sdk') as jest.Mock
-      const mockCreate = Anthropic.mock.results[0]?.value?.messages?.create
+      const OpenAI = jest.requireMock('openai') as jest.Mock
+      const mockCreate = OpenAI.mock.results[0]?.value?.chat?.completions?.create
 
       const result = await enhanceWithAI(sampleRecommendations)
 
@@ -220,23 +224,25 @@ describe('AI Insights Service', () => {
     })
 
     it('calls AI when quota is within limit — incrementQuotaCounter returns 1', async () => {
-      process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key'
+      process.env.OPENAI_API_KEY = 'sk-openai-test-key'
       mockIncrementQuotaCounter.mockResolvedValue(1)
 
-      // Make Anthropic return parseable AI responses (3 lines for 3 recs)
-      const Anthropic = jest.requireMock('@anthropic-ai/sdk') as jest.Mock
-      const instance = new Anthropic()
-      instance.messages.create.mockResolvedValue({
-        content: [
+      // Make OpenAI return parseable AI responses (3 lines for 3 recs)
+      const OpenAI = jest.requireMock('openai') as jest.Mock
+      const instance = new OpenAI()
+      instance.chat.completions.create.mockResolvedValue({
+        choices: [
           {
-            type: 'text',
-            text: '1. Ride at 2 PM to save $12 on this trip.\n2. Switch to Lyft to save $3.50 on average.\n3. Surge ends by 8 PM — wait if you can.',
+            message: {
+              content:
+                '1. Ride at 2 PM to save $12 on this trip.\n2. Switch to Lyft to save $3.50 on average.\n3. Surge ends by 8 PM — wait if you can.',
+            },
           },
         ],
       })
 
       // Re-instantiate with fresh mock
-      Anthropic.mockImplementation(() => instance)
+      OpenAI.mockImplementation(() => instance)
 
       const result = await enhanceWithAI(sampleRecommendations)
 
@@ -247,7 +253,7 @@ describe('AI Insights Service', () => {
     })
 
     it('uses UTC date format for quota key', async () => {
-      delete process.env.ANTHROPIC_API_KEY
+      delete process.env.OPENAI_API_KEY
 
       await enhanceWithAI(sampleRecommendations)
 
@@ -280,7 +286,7 @@ describe('AI Insights Service', () => {
     })
 
     it('getCached is called with ai: prefixed key and correct TTL', async () => {
-      delete process.env.ANTHROPIC_API_KEY
+      delete process.env.OPENAI_API_KEY
 
       await enhanceWithAI(sampleRecommendations)
 
