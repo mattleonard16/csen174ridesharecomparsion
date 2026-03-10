@@ -22,12 +22,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INFR-01**: Geocode cache persists across serverless instances via Redis with TTL
-- [ ] **INFR-02**: Route cache persists across serverless instances via Redis with TTL
-- [ ] **INFR-03**: Comparison cache persists across serverless instances via Redis with TTL
-- [ ] **INFR-04**: Recommendations cache persists across serverless instances via Redis with TTL
-- [ ] **INFR-05**: AI response cache persists across serverless instances via Redis with TTL
-- [ ] **INFR-06**: AI quota tracking uses Redis atomic counters (INCR + EXPIREAT) with daily TTL
+- [x] **INFR-01**: Geocode cache persists across serverless instances via Redis with TTL
+- [x] **INFR-02**: Route cache persists across serverless instances via Redis with TTL
+- [x] **INFR-03**: Comparison cache persists across serverless instances via Redis with TTL
+- [x] **INFR-04**: Recommendations cache persists across serverless instances via Redis with TTL
+- [x] **INFR-05**: AI response cache persists across serverless instances via Redis with TTL
+- [x] **INFR-06**: AI quota tracking uses Redis atomic counters (INCR + EXPIREAT) with daily TTL
 - [ ] **INFR-07**: AI insight generation uses OpenAI only (Anthropic SDK dependency removed)
 
 ### Core Features
@@ -90,12 +90,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OBSV-02 | Phase 1 | Complete |
 | OBSV-03 | Phase 1 | Complete |
 | OBSV-04 | Phase 1 | Complete |
-| INFR-01 | Phase 2 | Pending |
-| INFR-02 | Phase 2 | Pending |
-| INFR-03 | Phase 2 | Pending |
-| INFR-04 | Phase 2 | Pending |
-| INFR-05 | Phase 2 | Pending |
-| INFR-06 | Phase 2 | Pending |
+| INFR-01 | Phase 2 | Complete |
+| INFR-02 | Phase 2 | Complete |
+| INFR-03 | Phase 2 | Complete |
+| INFR-04 | Phase 2 | Complete |
+| INFR-05 | Phase 2 | Complete |
+| INFR-06 | Phase 2 | Complete |
 | INFR-07 | Phase 3 | Pending |
 | FEAT-01 | Phase 4 | Pending |
 | FEAT-02 | Phase 3 | Pending |
