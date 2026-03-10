@@ -15,7 +15,6 @@ import { toast } from 'sonner'
 import PriceAlert from './price-alert'
 import RecommendationsPanel from './recommendations-panel'
 import { useAuth } from '@/lib/auth-context'
-import { saveRouteForUser } from '@/lib/database'
 import { AuthDialog } from './auth-dialog'
 import ModalPortal from './ModalPortal'
 import { getClientSessionId } from '@/lib/client-session'
@@ -30,9 +29,9 @@ type RideData = {
 }
 
 type Results = {
-  uber: RideData
-  lyft: RideData
-  taxi: RideData
+  uber?: RideData
+  lyft?: RideData
+  taxi?: RideData
   waymo?: RideData
 }
 
@@ -104,40 +103,38 @@ export default memo(function RideComparisonResults({
   const [routeSaved, setRouteSaved] = useState(false)
 
   // Memoize services array first (used by handlers below)
-  const services = useMemo(
-    () => [
-      {
+  const services = useMemo(() => {
+    const all: { name: string; data: RideData; bgColor: string; textColor: string }[] = []
+    if (results.uber)
+      all.push({
         name: 'Uber',
         data: results.uber,
         bgColor: 'bg-black',
         textColor: 'text-foreground',
-      },
-      {
+      })
+    if (results.lyft)
+      all.push({
         name: 'Lyft',
         data: results.lyft,
         bgColor: 'bg-pink-600',
         textColor: 'text-foreground',
-      },
-      {
+      })
+    if (results.taxi)
+      all.push({
         name: 'Taxi',
         data: results.taxi,
         bgColor: 'bg-amber-500',
         textColor: 'text-black',
-      },
-      // Waymo is conditionally included when available (within service area)
-      ...(results.waymo
-        ? [
-            {
-              name: 'Waymo',
-              data: results.waymo,
-              bgColor: 'bg-teal-500',
-              textColor: 'text-white',
-            },
-          ]
-        : []),
-    ],
-    [results.uber, results.lyft, results.taxi, results.waymo]
-  )
+      })
+    if (results.waymo)
+      all.push({
+        name: 'Waymo',
+        data: results.waymo,
+        bgColor: 'bg-teal-500',
+        textColor: 'text-white',
+      })
+    return all
+  }, [results.uber, results.lyft, results.taxi, results.waymo])
 
   const getBookingUrl = useCallback(
     (serviceName: string) => {
@@ -186,6 +183,8 @@ export default memo(function RideComparisonResults({
   )
 
   const handleShare = useCallback(async () => {
+    if (services.length === 0) return
+
     const bestPriceService = services.reduce((best, current) => {
       const currentPrice = Number.parseFloat(current.data.price.replace('$', ''))
       const bestPriceVal = Number.parseFloat(best.data.price.replace('$', ''))
@@ -258,17 +257,22 @@ export default memo(function RideComparisonResults({
       setShowAuthDialog(true)
       return
     }
-
-    if (!routeId) {
-      return
-    }
+    if (!routeId) return
 
     const nickname = `${pickup?.split(',')[0] || 'Pickup'} → ${destination?.split(',')[0] || 'Destination'}`
 
-    const success = await saveRouteForUser(user.id, routeId, nickname)
-    if (success) {
-      setRouteSaved(true)
-      setTimeout(() => setRouteSaved(false), 3000)
+    try {
+      const response = await fetch('/api/saved-routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeId, nickname }),
+      })
+      if (response.ok) {
+        setRouteSaved(true)
+        setTimeout(() => setRouteSaved(false), 3000)
+      }
+    } catch {
+      // Save failed silently — non-critical operation
     }
   }, [user, routeId, pickup, destination])
 
@@ -337,25 +341,23 @@ export default memo(function RideComparisonResults({
   )
 
   // Memoize best price/wait time calculations
-  const bestPrice = useMemo(
-    () =>
-      services.reduce((best, current) => {
-        const currentPrice = Number.parseFloat(current.data.price.replace('$', ''))
-        const bestPriceVal = Number.parseFloat(best.data.price.replace('$', ''))
-        return currentPrice < bestPriceVal ? current : best
-      }, services[0]),
-    [services]
-  )
+  const bestPrice = useMemo(() => {
+    if (services.length === 0) return null
+    return services.reduce((best, current) => {
+      const currentPrice = Number.parseFloat(current.data.price.replace('$', ''))
+      const bestPriceVal = Number.parseFloat(best.data.price.replace('$', ''))
+      return currentPrice < bestPriceVal ? current : best
+    }, services[0])
+  }, [services])
 
-  const bestWaitTime = useMemo(
-    () =>
-      services.reduce((best, current) => {
-        const currentTime = Number.parseInt(current.data.waitTime.replace(' min', ''))
-        const bestTime = Number.parseInt(best.data.waitTime.replace(' min', ''))
-        return currentTime < bestTime ? current : best
-      }, services[0]),
-    [services]
-  )
+  const bestWaitTime = useMemo(() => {
+    if (services.length === 0) return null
+    return services.reduce((best, current) => {
+      const currentTime = Number.parseInt(current.data.waitTime.replace(' min', ''))
+      const bestTime = Number.parseInt(best.data.waitTime.replace(' min', ''))
+      return currentTime < bestTime ? current : best
+    }, services[0])
+  }, [services])
 
   // Helper to get price comparison vs historical average
   const getPriceComparison = useCallback(
@@ -471,32 +473,34 @@ export default memo(function RideComparisonResults({
       </div>
 
       {/* Quick Summary */}
-      <div className="card-elevated rounded-2xl p-6 sm:p-8 shadow-lg">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-          <div className="space-y-1">
-            <div className="text-4xl font-display text-secondary">{bestPrice.data.price}</div>
-            <div className="text-sm text-muted-foreground">
-              Best Price <span className="text-foreground font-medium">({bestPrice.name})</span>
+      {bestPrice && bestWaitTime && (
+        <div className="card-elevated rounded-2xl p-6 sm:p-8 shadow-lg">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+            <div className="space-y-1">
+              <div className="text-4xl font-display text-secondary">{bestPrice.data.price}</div>
+              <div className="text-sm text-muted-foreground">
+                Best Price <span className="text-foreground font-medium">({bestPrice.name})</span>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-4xl font-display text-primary">{bestWaitTime.data.waitTime}</div>
-            <div className="text-sm text-muted-foreground">
-              Fastest <span className="text-foreground font-medium">({bestWaitTime.name})</span>
+            <div className="space-y-1">
+              <div className="text-4xl font-display text-primary">{bestWaitTime.data.waitTime}</div>
+              <div className="text-sm text-muted-foreground">
+                Fastest <span className="text-foreground font-medium">({bestWaitTime.name})</span>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-4xl font-display text-foreground">
-              $
-              {(
-                services.reduce((sum, s) => sum + parseFloat(s.data.price.replace('$', '')), 0) /
-                services.length
-              ).toFixed(0)}
+            <div className="space-y-1">
+              <div className="text-4xl font-display text-foreground">
+                $
+                {(
+                  services.reduce((sum, s) => sum + parseFloat(s.data.price.replace('$', '')), 0) /
+                  services.length
+                ).toFixed(0)}
+              </div>
+              <div className="text-sm text-muted-foreground">Average Price</div>
             </div>
-            <div className="text-sm text-muted-foreground">Average Price</div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Smart Recommendation */}
       {insights && (
@@ -519,11 +523,11 @@ export default memo(function RideComparisonResults({
           <div
             key={service.name}
             className={`card-elevated card-shine rounded-2xl overflow-hidden transition-all duration-300 relative group hover:-translate-y-1 hover:shadow-xl
-              ${service.name === bestPrice.name ? 'border-secondary shadow-[0_0_20px_hsl(var(--secondary)/0.3)]' : 'hover:border-foreground/30'}
+              ${service.name === bestPrice?.name ? 'border-secondary shadow-[0_0_20px_hsl(var(--secondary)/0.3)]' : 'hover:border-foreground/30'}
             `}
           >
             {/* Recommended Banner */}
-            {service.name === bestPrice.name && (
+            {service.name === bestPrice?.name && (
               <div className="absolute top-3 right-3 bg-secondary text-secondary-foreground text-xs font-medium px-3 py-1 rounded-full z-10">
                 Best Price
               </div>
@@ -573,7 +577,7 @@ export default memo(function RideComparisonResults({
                   <span className="text-sm text-muted-foreground">Estimated Fare</span>
                   <div
                     className={`text-4xl font-display font-semibold tracking-tight tabular-nums ${
-                      service.name === bestPrice.name ? 'text-secondary' : 'text-foreground'
+                      service.name === bestPrice?.name ? 'text-secondary' : 'text-foreground'
                     }`}
                   >
                     {service.data.price}
@@ -587,7 +591,7 @@ export default memo(function RideComparisonResults({
                   <div className="text-xs text-muted-foreground mb-1">Wait Time</div>
                   <div
                     className={`text-xl font-semibold ${
-                      service.name === bestWaitTime.name ? 'text-primary' : 'text-foreground'
+                      service.name === bestWaitTime?.name ? 'text-primary' : 'text-foreground'
                     }`}
                   >
                     {service.data.waitTime}
@@ -789,7 +793,7 @@ export default memo(function RideComparisonResults({
       </div>
 
       {/* Price Alert Modal */}
-      {showPriceAlert && (
+      {showPriceAlert && bestPrice && (
         <PriceAlert
           currentBestPrice={Number.parseFloat(bestPrice.data.price.replace('$', ''))}
           onSetAlert={handleSetPriceAlert}

@@ -51,6 +51,16 @@ function mapCompareError(error: CompareServiceErrorCode): {
         status: 503,
         message: 'Location service is temporarily unavailable. Please try again.',
       }
+    case 'ROUTE_TIMEOUT':
+      return {
+        status: 504,
+        message: 'Route calculation timed out. Please try again.',
+      }
+    case 'ROUTE_UNAVAILABLE':
+      return {
+        status: 503,
+        message: 'Route service is temporarily unavailable. Please try again.',
+      }
     default:
       return {
         status: 500,
@@ -59,7 +69,12 @@ function mapCompareError(error: CompareServiceErrorCode): {
   }
 }
 
-function createCompareErrorResponse(error: unknown, request: NextRequest, requestId: string, route: string) {
+function createCompareErrorResponse(
+  error: unknown,
+  request: NextRequest,
+  requestId: string,
+  route: string
+) {
   if (!isCompareServiceError(error)) {
     return null
   }
