@@ -4,22 +4,8 @@ import { withRateLimit } from '@/lib/rate-limiter'
 import { getRoutePriceHistory, getHourlyPriceAverage, getSavedRoutesForUser } from '@/lib/database'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-
-/**
- * Get or generate a request ID for traceability
- */
-function getRequestId(request: NextRequest): string {
-  return request.headers.get('x-request-id') ?? crypto.randomUUID()
-}
-
-/**
- * Create response headers with request ID
- */
-function createResponseHeaders(requestId: string): Record<string, string> {
-  return {
-    'x-request-id': requestId,
-  }
-}
+import { logError } from '@/lib/monitoring'
+import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 
 /**
  * Verify that the user owns the specified route (IDOR protection)
@@ -48,6 +34,7 @@ async function verifyRouteOwnership(userId: string, routeId: string): Promise<bo
 
 async function handleGet(request: NextRequest) {
   const requestId = getRequestId(request)
+  let userId: string | undefined
 
   try {
     // Verify authentication
@@ -58,6 +45,7 @@ async function handleGet(request: NextRequest) {
         { status: 401, headers: createResponseHeaders(requestId) }
       )
     }
+    userId = session.user.id
 
     const { searchParams } = new URL(request.url)
     const routeId = searchParams.get('routeId')
@@ -210,7 +198,14 @@ async function handleGet(request: NextRequest) {
       },
       { headers: createResponseHeaders(requestId) }
     )
-  } catch {
+  } catch (error) {
+    logError({
+      error: error instanceof Error ? error : new Error('Failed to fetch dashboard data'),
+      route: 'api/dashboard.GET',
+      requestId,
+      userId,
+    })
+
     return NextResponse.json(
       { error: 'Failed to fetch dashboard data' },
       { status: 500, headers: createResponseHeaders(requestId) }

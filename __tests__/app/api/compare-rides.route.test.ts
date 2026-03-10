@@ -157,6 +157,7 @@ const comparisonFixture = {
     isActive: true,
   },
   timeRecommendations: ['Prices usually ease after 7 PM.'],
+  routeAccuracy: 'exact' as const,
 }
 
 describe('/api/compare-rides route', () => {

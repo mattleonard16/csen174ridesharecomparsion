@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getClientSessionId } from '@/lib/client-session'
 import type {
   ComparisonApiResponse,
   ComparisonRequestBody,
@@ -124,10 +125,12 @@ export function useRideComparison() {
           }
         }
 
+        const sessionId = getClientSessionId()
         const response = await fetch('/api/compare-rides', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(sessionId ? { 'x-session-id': sessionId } : {}),
           },
           body: JSON.stringify(buildRequestBody(input, recaptchaToken)),
           signal: controller.signal,

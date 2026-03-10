@@ -1,6 +1,8 @@
 import { API_CONFIG } from '@/lib/constants'
 import { findOrCreateRoute, logPriceSnapshot, logSearch } from '@/lib/database'
 import { getAirportByCode, parseAirportCode } from '@/lib/airports'
+import { haversineDistanceKm } from '@/lib/geo'
+import { log } from '@/lib/monitoring'
 import { getBestTimeRecommendations, getTimeBasedMultiplier, pricingEngine } from '@/lib/pricing'
 import { sanitizeString } from '@/lib/validation'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
@@ -12,6 +14,7 @@ import type {
   PriceString,
   RideResult,
   RideService,
+  RouteAccuracy,
   ServiceType,
   SurgeInfo,
 } from '@/types'
@@ -34,6 +37,68 @@ interface RouteMetrics {
   osrmDurationSec?: number
 }
 
+export type CompareServiceErrorCode =
+  | 'ADDRESS_NOT_FOUND'
+  | 'GEOCODE_TIMEOUT'
+  | 'GEOCODE_UNAVAILABLE'
+  | 'ROUTE_TIMEOUT'
+  | 'ROUTE_UNAVAILABLE'
+
+type UpstreamPhase = 'geocode' | 'route'
+type UpstreamProvider = 'nominatim' | 'osrm'
+
+type FetchPolicy = {
+  provider: UpstreamProvider
+  phase: UpstreamPhase
+  timeoutMs: number
+  maxRetries: number
+  backoffMs: number
+}
+
+type RouteMetricsResolution = {
+  metrics: RouteMetrics
+  routeAccuracy: RouteAccuracy
+  routeWarning?: string
+}
+
+export class CompareServiceError extends Error {
+  code: CompareServiceErrorCode
+  provider?: UpstreamProvider
+  phase?: UpstreamPhase
+  timedOut?: boolean
+
+  constructor(
+    code: CompareServiceErrorCode,
+    message: string,
+    options?: {
+      provider?: UpstreamProvider
+      phase?: UpstreamPhase
+      timedOut?: boolean
+      cause?: unknown
+    }
+  ) {
+    super(message)
+    this.name = 'CompareServiceError'
+    this.code = code
+    this.provider = options?.provider
+    this.phase = options?.phase
+    this.timedOut = options?.timedOut
+    if (options?.cause !== undefined) {
+      ;(this as Error & { cause?: unknown }).cause = options.cause
+    }
+  }
+}
+
+export function isCompareServiceError(error: unknown): error is CompareServiceError {
+  return error instanceof CompareServiceError
+}
+
+export function resetRideComparisonCaches(): void {
+  GEOCODE_CACHE.clear()
+  ROUTE_CACHE.clear()
+  COMPARISON_CACHE.clear()
+}
+
 interface ComparisonCoreComputation {
   results: ComparisonResults
   surgeInfo: SurgeInfo
@@ -41,6 +106,8 @@ interface ComparisonCoreComputation {
   pickup: Coordinates
   destination: Coordinates
   insights: string
+  routeAccuracy: RouteAccuracy
+  routeWarning?: string
 }
 
 export interface ComparisonComputation extends ComparisonCoreComputation {
@@ -60,6 +127,25 @@ interface CachedComparisonCore extends ComparisonCoreComputation {
   metrics: RouteMetrics
   priceSnapshots: CachedPriceSnapshotData[]
 }
+
+const GEOCODE_FETCH_POLICY: FetchPolicy = {
+  provider: 'nominatim',
+  phase: 'geocode',
+  timeoutMs: 2500,
+  maxRetries: 1,
+  backoffMs: 200,
+}
+
+const ROUTE_FETCH_POLICY: FetchPolicy = {
+  provider: 'osrm',
+  phase: 'route',
+  timeoutMs: 3000,
+  maxRetries: 1,
+  backoffMs: 250,
+}
+
+const ESTIMATED_ROUTE_WARNING =
+  'Prices are based on estimated route metrics because live routing is temporarily unavailable.'
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
   uber: 'UberX',
@@ -180,7 +266,9 @@ async function getComparisonCore(
   services: ServiceType[],
   metrics: RouteMetrics,
   timestamp: Date,
-  isPrecomputedRoute: boolean
+  isPrecomputedRoute: boolean,
+  routeAccuracy: RouteAccuracy,
+  routeWarning?: string
 ): Promise<CachedComparisonCore> {
   const cacheKey = createComparisonCacheKey(pickup, destination, services, timestamp)
   const cached = COMPARISON_CACHE.get(cacheKey)
@@ -223,6 +311,8 @@ async function getComparisonCore(
     pickup,
     destination,
     insights: generateRecommendation(comparisonResults),
+    routeAccuracy,
+    routeWarning,
     priceSnapshots: resultsEntries.map(([service, _, computation]) => ({
       service,
       finalFare: computation.breakdown.finalFare,
@@ -264,13 +354,18 @@ async function persistComparison(
     return null
   }
 
+  // Only persist exact route metrics to maintain database quality
+  const persistedDistance =
+    core.routeAccuracy === 'exact' ? kmToMiles(core.metrics.distanceKm) : undefined
+  const persistedDuration = core.routeAccuracy === 'exact' ? core.metrics.durationMin : undefined
+
   const routeId = await findOrCreateRoute(
     pickupAddress,
     [pickupCoords[0], pickupCoords[1]],
     destinationAddress,
     [destinationCoords[0], destinationCoords[1]],
-    kmToMiles(core.metrics.distanceKm),
-    core.metrics.durationMin
+    persistedDistance,
+    persistedDuration
   )
 
   if (!routeId) {
@@ -312,13 +407,14 @@ export async function compareRidesByAddresses(
     sessionId?: string | null
     persist?: boolean
   }
-): Promise<ComparisonComputation | null> {
+): Promise<ComparisonComputation> {
   const sanitizedPickup = sanitizeString(pickupAddress)
   const sanitizedDestination = sanitizeString(destinationAddress)
+
   const precomputedRoute = findPrecomputedRouteByAddresses(sanitizedPickup, sanitizedDestination)
 
-  let pickupCoords: Coordinates | null
-  let destinationCoords: Coordinates | null
+  let pickupCoords: Coordinates
+  let destinationCoords: Coordinates
 
   if (precomputedRoute) {
     pickupCoords = precomputedRoute.pickup.coordinates
@@ -330,10 +426,6 @@ export async function compareRidesByAddresses(
     ])
     pickupCoords = pickup
     destinationCoords = destination
-  }
-
-  if (!pickupCoords || !destinationCoords) {
-    return null
   }
 
   return compareRidesByCoordinates(
@@ -363,7 +455,7 @@ export async function compareRidesByCoordinates(
     persist?: boolean
     pickupAddress?: string
     destinationAddress?: string
-    precomputedMetrics?: RouteMetrics
+    precomputedMetrics?: Pick<RouteMetrics, 'distanceKm' | 'durationMin'>
   }
 ): Promise<ComparisonComputation> {
   const uniqueServices = normaliseServices(services)
@@ -382,9 +474,12 @@ export async function compareRidesByCoordinates(
     )
   }
 
-  const metrics = options?.precomputedMetrics
-    ? options.precomputedMetrics
-    : await getRouteMetrics(pickup.coordinates, destination.coordinates)
+  const routeMetrics = await resolveRouteMetrics(
+    pickup.coordinates,
+    destination.coordinates,
+    options?.precomputedMetrics
+  )
+  const metrics = routeMetrics.metrics
 
   const core = await getComparisonCore(
     pickup.coordinates,
@@ -392,7 +487,9 @@ export async function compareRidesByCoordinates(
     eligibleServices,
     metrics,
     timestamp,
-    !!options?.precomputedMetrics
+    !!options?.precomputedMetrics,
+    routeMetrics.routeAccuracy,
+    routeMetrics.routeWarning
   )
 
   const pickupAddress = options?.pickupAddress ?? pickup.name
@@ -414,6 +511,8 @@ export async function compareRidesByCoordinates(
     pickup: core.pickup,
     destination: core.destination,
     insights: core.insights,
+    routeAccuracy: core.routeAccuracy,
+    routeWarning: core.routeWarning,
   }
 }
 
@@ -426,7 +525,7 @@ function classifyTraffic(
   return 'severe'
 }
 
-async function geocodeWithCache(address: string): Promise<Coordinates | null> {
+async function geocodeWithCache(address: string): Promise<Coordinates> {
   const cacheKey = address.toLowerCase()
   const cached = GEOCODE_CACHE.get(cacheKey)
   const now = Date.now()
@@ -449,15 +548,29 @@ async function geocodeWithCache(address: string): Promise<Coordinates | null> {
   }
 
   const url = `${API_CONFIG.NOMINATIM_BASE_URL}?q=${encodeURIComponent(address)}&format=json&limit=1`
-  const response = await resilientFetch(url)
+  const response = await fetchWithPolicy(url, GEOCODE_FETCH_POLICY)
 
   if (!response.ok) {
-    return null
+    throw new CompareServiceError(
+      'GEOCODE_UNAVAILABLE',
+      `Geocoding provider returned ${response.status}`,
+      {
+        provider: 'nominatim',
+        phase: 'geocode',
+      }
+    )
   }
 
-  const data: Array<{ lon: string; lat: string }> = await response.json()
+  const data = (await response.json()) as Array<{ lon: string; lat: string }>
   if (!data.length) {
-    return null
+    throw new CompareServiceError(
+      'ADDRESS_NOT_FOUND',
+      `Address could not be resolved: ${address}`,
+      {
+        provider: 'nominatim',
+        phase: 'geocode',
+      }
+    )
   }
 
   const lon = parseFloat(data[0].lon) as Longitude
@@ -476,7 +589,7 @@ async function getRouteMetrics(
   pickup: Coordinates,
   destination: Coordinates
 ): Promise<RouteMetrics> {
-  const cacheKey = `${pickup[0]},${pickup[1]}-${destination[0]},${destination[1]}`
+  const cacheKey = getRouteCacheKey('exact', pickup, destination)
   const now = Date.now()
   const cached = ROUTE_CACHE.get(cacheKey)
 
@@ -485,16 +598,26 @@ async function getRouteMetrics(
   }
 
   const url = `${API_CONFIG.OSRM_BASE_URL}/${pickup[0]},${pickup[1]};${destination[0]},${destination[1]}?overview=false`
-  const response = await resilientFetch(url)
+  const response = await fetchWithPolicy(url, ROUTE_FETCH_POLICY)
 
   if (!response.ok) {
-    throw new Error(`OSRM request failed with status ${response.status}`)
+    throw new CompareServiceError(
+      'ROUTE_UNAVAILABLE',
+      `Routing provider returned ${response.status}`,
+      {
+        provider: 'osrm',
+        phase: 'route',
+      }
+    )
   }
 
   const data: OSRMResponse = await response.json()
 
   if (data.code !== 'Ok' || !data.routes?.length) {
-    throw new Error(`OSRM response invalid: ${data.code}`)
+    throw new CompareServiceError('ROUTE_UNAVAILABLE', `Routing response invalid: ${data.code}`, {
+      provider: 'osrm',
+      phase: 'route',
+    })
   }
 
   const route = data.routes[0]
@@ -513,12 +636,55 @@ async function getRouteMetrics(
   return metrics
 }
 
-async function resilientFetch(url: string): Promise<Response> {
+async function resolveRouteMetrics(
+  pickup: Coordinates,
+  destination: Coordinates,
+  precomputedMetrics?: Pick<RouteMetrics, 'distanceKm' | 'durationMin'>
+): Promise<RouteMetricsResolution> {
+  if (precomputedMetrics) {
+    return {
+      metrics: {
+        distanceKm: precomputedMetrics.distanceKm,
+        durationMin: precomputedMetrics.durationMin,
+      },
+      routeAccuracy: 'exact',
+    }
+  }
+
+  try {
+    return {
+      metrics: await getRouteMetrics(pickup, destination),
+      routeAccuracy: 'exact',
+    }
+  } catch (error) {
+    if (!isRouteFallbackError(error)) {
+      throw error
+    }
+
+    const metrics = getEstimatedRouteMetrics(pickup, destination)
+    log('Route metrics fallback enabled', {
+      provider: 'osrm',
+      phase: 'route',
+      fallbackUsed: true,
+      code: error.code,
+      timedOut: error.timedOut ?? false,
+    })
+
+    return {
+      metrics,
+      routeAccuracy: 'estimated',
+      routeWarning: ESTIMATED_ROUTE_WARNING,
+    }
+  }
+}
+
+async function fetchWithPolicy(url: string, policy: FetchPolicy): Promise<Response> {
   let lastError: unknown
 
-  for (let attempt = 0; attempt <= API_CONFIG.MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= policy.maxRetries; attempt++) {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), API_CONFIG.REQUEST_TIMEOUT_MS)
+    const timeout = setTimeout(() => controller.abort(), policy.timeoutMs)
+    const startedAt = Date.now()
 
     try {
       const response = await fetch(url, {
@@ -529,18 +695,146 @@ async function resilientFetch(url: string): Promise<Response> {
       })
 
       clearTimeout(timeout)
+
+      if (shouldRetryResponse(response)) {
+        const elapsedMs = Date.now() - startedAt
+        log('Upstream request retry scheduled', {
+          provider: policy.provider,
+          phase: policy.phase,
+          attempt: attempt + 1,
+          elapsedMs,
+          timedOut: false,
+          status: response.status,
+          fallbackUsed: false,
+        })
+
+        if (attempt < policy.maxRetries) {
+          await sleep(getBackoffDelay(policy.backoffMs, attempt))
+          continue
+        }
+      }
+
       return response
     } catch (error) {
       clearTimeout(timeout)
       lastError = error
 
-      if (attempt === API_CONFIG.MAX_RETRIES) {
-        throw error
+      const timedOut = isAbortError(error)
+      const elapsedMs = Date.now() - startedAt
+      log('Upstream request failed', {
+        provider: policy.provider,
+        phase: policy.phase,
+        attempt: attempt + 1,
+        elapsedMs,
+        timedOut,
+        fallbackUsed: false,
+      })
+
+      if (attempt < policy.maxRetries && isRetryableError(error)) {
+        await sleep(getBackoffDelay(policy.backoffMs, attempt))
+        continue
       }
+
+      throw buildUpstreamError(policy, error, timedOut)
     }
   }
 
   throw lastError instanceof Error ? lastError : new Error('Request failed after retries')
+}
+
+function shouldRetryResponse(response: Response): boolean {
+  return response.status >= 500
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+function isRetryableError(error: unknown): boolean {
+  return isAbortError(error) || error instanceof TypeError
+}
+
+function buildUpstreamError(
+  policy: FetchPolicy,
+  error: unknown,
+  timedOut: boolean
+): CompareServiceError {
+  if (policy.phase === 'geocode') {
+    return new CompareServiceError(
+      timedOut ? 'GEOCODE_TIMEOUT' : 'GEOCODE_UNAVAILABLE',
+      timedOut ? 'Geocoding provider timed out' : 'Geocoding provider is temporarily unavailable',
+      {
+        provider: policy.provider,
+        phase: policy.phase,
+        timedOut,
+        cause: error,
+      }
+    )
+  }
+
+  return new CompareServiceError(
+    timedOut ? 'ROUTE_TIMEOUT' : 'ROUTE_UNAVAILABLE',
+    timedOut ? 'Routing provider timed out' : 'Routing provider is temporarily unavailable',
+    {
+      provider: policy.provider,
+      phase: policy.phase,
+      timedOut,
+      cause: error,
+    }
+  )
+}
+
+function isRouteFallbackError(error: unknown): error is CompareServiceError {
+  return (
+    isCompareServiceError(error) &&
+    (error.code === 'ROUTE_TIMEOUT' || error.code === 'ROUTE_UNAVAILABLE')
+  )
+}
+
+function getRouteCacheKey(
+  accuracy: RouteAccuracy,
+  pickup: Coordinates,
+  destination: Coordinates
+): string {
+  return `${accuracy}:${pickup[0]},${pickup[1]}-${destination[0]},${destination[1]}`
+}
+
+function getEstimatedRouteMetrics(pickup: Coordinates, destination: Coordinates): RouteMetrics {
+  const cacheKey = getRouteCacheKey('estimated', pickup, destination)
+  const now = Date.now()
+  const cached = ROUTE_CACHE.get(cacheKey)
+
+  if (cached && cached.expiresAt > now) {
+    return cached.value
+  }
+
+  const straightLineKm = haversineDistanceKm(pickup, destination)
+  const roadFactor =
+    straightLineKm < 3 ? 1.45 : straightLineKm < 10 ? 1.35 : straightLineKm < 30 ? 1.25 : 1.18
+  const distanceKm = Math.max(0.8, Number((straightLineKm * roadFactor).toFixed(2)))
+  const averageSpeedKmh = distanceKm < 5 ? 22 : distanceKm < 15 ? 28 : distanceKm < 40 ? 36 : 48
+  const durationMin = Math.max(4, Number(((distanceKm / averageSpeedKmh) * 60 + 3).toFixed(1)))
+
+  const metrics: RouteMetrics = {
+    distanceKm,
+    durationMin,
+  }
+
+  maintainCache(ROUTE_CACHE)
+  ROUTE_CACHE.set(cacheKey, {
+    value: metrics,
+    expiresAt: now + API_CONFIG.ROUTE_CACHE_TTL,
+  })
+
+  return metrics
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function getBackoffDelay(baseMs: number, attempt: number): number {
+  return baseMs * (attempt + 1)
 }
 
 function buildRideResult(

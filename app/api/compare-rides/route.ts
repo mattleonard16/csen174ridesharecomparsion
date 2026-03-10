@@ -9,11 +9,18 @@ import {
   sanitizeString,
 } from '@/lib/validation'
 import { verifyRecaptchaToken, RECAPTCHA_CONFIG } from '@/lib/recaptcha'
-import { compareRidesByAddresses, compareRidesByCoordinates } from '@/lib/services/ride-comparison'
+import {
+  compareRidesByAddresses,
+  compareRidesByCoordinates,
+  isCompareServiceError,
+  type CompareServiceErrorCode,
+} from '@/lib/services/ride-comparison'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { auth } from '@/auth'
 import { generateRecommendations } from '@/lib/services/recommendations'
 import { enhanceWithAI } from '@/lib/services/ai-insights'
+import { log, logError } from '@/lib/monitoring'
+import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 import type {
   ComparisonApiResponse,
   ComparisonRequestBody,
@@ -24,18 +31,73 @@ import type {
 
 const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
 
-function getRequestId(request: NextRequest): string {
-  return request.headers.get('x-request-id') ?? crypto.randomUUID()
+function mapCompareError(error: CompareServiceErrorCode): {
+  status: number
+  message: string
+} {
+  switch (error) {
+    case 'ADDRESS_NOT_FOUND':
+      return {
+        status: 400,
+        message: 'We could not find one of those addresses. Please enter a more specific location.',
+      }
+    case 'GEOCODE_TIMEOUT':
+      return {
+        status: 504,
+        message: 'Location lookup timed out. Please try again.',
+      }
+    case 'GEOCODE_UNAVAILABLE':
+      return {
+        status: 503,
+        message: 'Location service is temporarily unavailable. Please try again.',
+      }
+    case 'ROUTE_TIMEOUT':
+      return {
+        status: 504,
+        message: 'Route calculation timed out. Please try again.',
+      }
+    case 'ROUTE_UNAVAILABLE':
+      return {
+        status: 503,
+        message: 'Route service is temporarily unavailable. Please try again.',
+      }
+    default:
+      return {
+        status: 500,
+        message: 'Failed to compare rides',
+      }
+  }
 }
 
-function createResponseHeaders(
+function createCompareErrorResponse(
+  error: unknown,
+  request: NextRequest,
   requestId: string,
-  additionalHeaders?: Record<string, string>
-): Record<string, string> {
-  return {
-    'x-request-id': requestId,
-    ...additionalHeaders,
+  route: string
+) {
+  if (!isCompareServiceError(error)) {
+    return null
   }
+
+  const mappedError = mapCompareError(error.code)
+  log('Compare request failed', {
+    route,
+    requestId,
+    sessionId: request.headers.get('x-session-id') ?? undefined,
+    code: error.code,
+    provider: error.provider,
+    phase: error.phase,
+    timedOut: error.timedOut ?? false,
+  })
+
+  return NextResponse.json(
+    {
+      error: mappedError.message,
+      code: error.code,
+      requestId,
+    },
+    { status: mappedError.status, headers: createResponseHeaders(requestId) }
+  )
 }
 
 function normaliseServices(services?: ServiceType[]): ServiceType[] {
@@ -90,6 +152,8 @@ function buildComparisonResponse(
     surgeInfo: comparisons.surgeInfo,
     timeRecommendations: comparisons.timeRecommendations,
     aiRecommendations,
+    routeAccuracy: comparisons.routeAccuracy,
+    routeWarning: comparisons.routeWarning,
   }
 }
 
@@ -121,13 +185,6 @@ async function handleGet(request: NextRequest) {
       }
     )
 
-    if (!comparisons) {
-      return NextResponse.json(
-        { error: 'Could not compute comparisons' },
-        { status: 500, headers: createResponseHeaders(requestId) }
-      )
-    }
-
     const cacheControl = isPrecomputedRoute
       ? 'private, max-age=300, stale-while-revalidate=1800'
       : 'private, max-age=30, stale-while-revalidate=120'
@@ -136,7 +193,24 @@ async function handleGet(request: NextRequest) {
     return NextResponse.json(buildComparisonResponse(comparisons, aiRecommendations), {
       headers: createResponseHeaders(requestId, { 'Cache-Control': cacheControl }),
     })
-  } catch {
+  } catch (error) {
+    const compareErrorResponse = createCompareErrorResponse(
+      error,
+      request,
+      requestId,
+      'api/compare-rides.GET'
+    )
+    if (compareErrorResponse) {
+      return compareErrorResponse
+    }
+
+    logError({
+      error: error instanceof Error ? error : new Error('Failed to prefetch ride comparisons'),
+      route: 'api/compare-rides.GET',
+      requestId,
+      sessionId: request.headers.get('x-session-id') ?? undefined,
+    })
+
     return NextResponse.json(
       { error: 'Failed to prefetch ride comparisons' },
       { status: 500, headers: createResponseHeaders(requestId) }
@@ -313,13 +387,6 @@ async function handlePost(request: NextRequest) {
       }
     )
 
-    if (!comparisons) {
-      return NextResponse.json(
-        { error: 'Could not compute comparisons' },
-        { status: 500, headers: createResponseHeaders(requestId) }
-      )
-    }
-
     const aiRecommendations = await resolveAiRecommendations(
       comparisons.routeId,
       authenticatedUserId
@@ -328,7 +395,24 @@ async function handlePost(request: NextRequest) {
     return NextResponse.json(buildComparisonResponse(comparisons, aiRecommendations), {
       headers: createResponseHeaders(requestId),
     })
-  } catch {
+  } catch (error) {
+    const compareErrorResponse = createCompareErrorResponse(
+      error,
+      request,
+      requestId,
+      'api/compare-rides.POST'
+    )
+    if (compareErrorResponse) {
+      return compareErrorResponse
+    }
+
+    logError({
+      error: error instanceof Error ? error : new Error('Failed to compare rides'),
+      route: 'api/compare-rides.POST',
+      requestId,
+      sessionId: request.headers.get('x-session-id') ?? undefined,
+    })
+
     return NextResponse.json(
       { error: 'Failed to compare rides' },
       { status: 500, headers: createResponseHeaders(requestId) }

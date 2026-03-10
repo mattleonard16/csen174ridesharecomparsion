@@ -4,20 +4,21 @@ import {
   Bell,
   Bookmark,
   Zap,
+  Clock,
   TrendingUp,
   TrendingDown,
   Minus,
   BarChart3,
-  Sparkles,
 } from 'lucide-react'
-import { useState, memo, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, memo, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
 import PriceAlert from './price-alert'
+import RecommendationsPanel from './recommendations-panel'
 import { useAuth } from '@/lib/auth-context'
 import { AuthDialog } from './auth-dialog'
 import ModalPortal from './ModalPortal'
-import RecommendationsPanel from './recommendations-panel'
-import type { AIRecommendation } from '@/types'
+import { getClientSessionId } from '@/lib/client-session'
+import type { AIRecommendation, RouteAccuracy } from '@/types'
 
 type RideData = {
   price: string
@@ -27,7 +28,12 @@ type RideData = {
   surgeMultiplier?: string
 }
 
-type Results = Partial<Record<ServiceType, RideData>>
+type Results = {
+  uber?: RideData
+  lyft?: RideData
+  taxi?: RideData
+  waymo?: RideData
+}
 
 type ServiceType = 'uber' | 'lyft' | 'taxi' | 'waymo'
 
@@ -65,12 +71,14 @@ type RideComparisonResultsProps = {
     reason: string
     multiplier: number
   } | null
+  timeRecommendations?: string[]
+  routeAccuracy?: RouteAccuracy | null
+  routeWarning?: string
   pickup?: string
   destination?: string
   pickupCoords?: [number, number] | null
   destinationCoords?: [number, number] | null
   historicalStats?: Partial<Record<ServiceType, RouteClusterStats | null>>
-  timeRecommendations?: string[]
   aiRecommendations?: AIRecommendation[]
 }
 
@@ -79,12 +87,14 @@ export default memo(function RideComparisonResults({
   results,
   insights,
   surgeInfo,
+  timeRecommendations = [],
+  routeAccuracy = 'exact',
+  routeWarning = '',
   pickup = '',
   destination = '',
   pickupCoords = null,
   destinationCoords = null,
   historicalStats,
-  timeRecommendations = [],
   aiRecommendations = [],
 }: RideComparisonResultsProps) {
   const { user } = useAuth()
@@ -92,126 +102,39 @@ export default memo(function RideComparisonResults({
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [routeSaved, setRouteSaved] = useState(false)
 
-  // AI insight state
-  type AiInsightState = 'idle' | 'loading' | 'success' | 'rate-limited' | 'error'
-  const [aiInsightState, setAiInsightState] = useState<AiInsightState>('idle')
-  const [aiInsight, setAiInsight] = useState('')
-  const viewedRecommendationIdsRef = useRef<Set<string>>(new Set())
-
-  const routeRecommendations = useMemo(() => {
-    if (aiRecommendations.length > 0) {
-      return aiRecommendations
-    }
-
-    return timeRecommendations.map<AIRecommendation>((message, index) => ({
-      type: 'DEPARTURE_TIME' as const,
-      title: index === 0 ? 'Timing Tip' : `Timing Tip ${index + 1}`,
-      message,
-      confidence: 0.4,
-      dataPoints: {},
-    }))
-  }, [aiRecommendations, timeRecommendations])
-
-  useEffect(() => {
-    if (!pickup || !destination) return
-
-    setAiInsightState('loading')
-
-    fetch('/api/ai-insights', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pickup, destination, results, surgeInfo }),
-    })
-      .then(async res => {
-        if (res.status === 429) {
-          setAiInsightState('rate-limited')
-          return
-        }
-        if (!res.ok) {
-          setAiInsightState('error')
-          return
-        }
-        const data = (await res.json()) as { insight?: string }
-        if (data.insight) {
-          setAiInsight(data.insight)
-          setAiInsightState('success')
-        } else {
-          setAiInsightState('error')
-        }
-      })
-      .catch(() => {
-        setAiInsightState('error')
-      })
-    // Only run when results first load — pickup/destination/results identity won't change mid-session
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!showAuthDialog) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        setShowAuthDialog(false)
-      }
-    }
-
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      document.body.style.overflow = originalOverflow
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [showAuthDialog])
-
   // Memoize services array first (used by handlers below)
-  const services = useMemo(
-    () => [
-      ...(results.uber
-        ? [
-            {
-              name: 'Uber',
-              data: results.uber,
-              bgColor: 'bg-black',
-              textColor: 'text-foreground',
-            },
-          ]
-        : []),
-      ...(results.lyft
-        ? [
-            {
-              name: 'Lyft',
-              data: results.lyft,
-              bgColor: 'bg-pink-600',
-              textColor: 'text-foreground',
-            },
-          ]
-        : []),
-      ...(results.taxi
-        ? [
-            {
-              name: 'Taxi',
-              data: results.taxi,
-              bgColor: 'bg-amber-500',
-              textColor: 'text-black',
-            },
-          ]
-        : []),
-      ...(results.waymo
-        ? [
-            {
-              name: 'Waymo',
-              data: results.waymo,
-              bgColor: 'bg-teal-500',
-              textColor: 'text-white',
-            },
-          ]
-        : []),
-    ],
-    [results.uber, results.lyft, results.taxi, results.waymo]
-  )
+  const services = useMemo(() => {
+    const all: { name: string; data: RideData; bgColor: string; textColor: string }[] = []
+    if (results.uber)
+      all.push({
+        name: 'Uber',
+        data: results.uber,
+        bgColor: 'bg-black',
+        textColor: 'text-foreground',
+      })
+    if (results.lyft)
+      all.push({
+        name: 'Lyft',
+        data: results.lyft,
+        bgColor: 'bg-pink-600',
+        textColor: 'text-foreground',
+      })
+    if (results.taxi)
+      all.push({
+        name: 'Taxi',
+        data: results.taxi,
+        bgColor: 'bg-amber-500',
+        textColor: 'text-black',
+      })
+    if (results.waymo)
+      all.push({
+        name: 'Waymo',
+        data: results.waymo,
+        bgColor: 'bg-teal-500',
+        textColor: 'text-white',
+      })
+    return all
+  }, [results.uber, results.lyft, results.taxi, results.waymo])
 
   const getBookingUrl = useCallback(
     (serviceName: string) => {
@@ -260,6 +183,8 @@ export default memo(function RideComparisonResults({
   )
 
   const handleShare = useCallback(async () => {
+    if (services.length === 0) return
+
     const bestPriceService = services.reduce((best, current) => {
       const currentPrice = Number.parseFloat(current.data.price.replace('$', ''))
       const bestPriceVal = Number.parseFloat(best.data.price.replace('$', ''))
@@ -332,10 +257,7 @@ export default memo(function RideComparisonResults({
       setShowAuthDialog(true)
       return
     }
-
-    if (!routeId) {
-      return
-    }
+    if (!routeId) return
 
     const nickname = `${pickup?.split(',')[0] || 'Pickup'} → ${destination?.split(',')[0] || 'Destination'}`
 
@@ -345,45 +267,14 @@ export default memo(function RideComparisonResults({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ routeId, nickname }),
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to save route')
+      if (response.ok) {
+        setRouteSaved(true)
+        setTimeout(() => setRouteSaved(false), 3000)
       }
-
-      setRouteSaved(true)
-      setTimeout(() => setRouteSaved(false), 3000)
     } catch {
-      toast.error('Failed to save this route. Please try again.')
+      // Save failed silently — non-critical operation
     }
   }, [user, routeId, pickup, destination])
-
-  const handleRecommendationAction = useCallback(
-    async (
-      recommendationId: string,
-      action: 'VIEWED' | 'CLICKED' | 'FOLLOWED' | 'DISMISSED',
-      estimatedSavings?: number
-    ) => {
-      try {
-        await fetch('/api/recommendations/actions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recommendationId, action, estimatedSavings }),
-        })
-      } catch {
-        // Recommendation tracking should never block the core compare experience.
-      }
-    },
-    []
-  )
-
-  useEffect(() => {
-    routeRecommendations.forEach(rec => {
-      if (rec.id && !viewedRecommendationIdsRef.current.has(rec.id)) {
-        viewedRecommendationIdsRef.current.add(rec.id)
-        void handleRecommendationAction(rec.id, 'VIEWED', rec.dataPoints.potentialSavings)
-      }
-    })
-  }, [routeRecommendations, handleRecommendationAction])
 
   const handleSetPriceAlert = useCallback(
     async (threshold: number) => {
@@ -450,25 +341,23 @@ export default memo(function RideComparisonResults({
   )
 
   // Memoize best price/wait time calculations
-  const bestPrice = useMemo(
-    () =>
-      services.reduce((best, current) => {
-        const currentPrice = Number.parseFloat(current.data.price.replace('$', ''))
-        const bestPriceVal = Number.parseFloat(best.data.price.replace('$', ''))
-        return currentPrice < bestPriceVal ? current : best
-      }, services[0]),
-    [services]
-  )
+  const bestPrice = useMemo(() => {
+    if (services.length === 0) return null
+    return services.reduce((best, current) => {
+      const currentPrice = Number.parseFloat(current.data.price.replace('$', ''))
+      const bestPriceVal = Number.parseFloat(best.data.price.replace('$', ''))
+      return currentPrice < bestPriceVal ? current : best
+    }, services[0])
+  }, [services])
 
-  const bestWaitTime = useMemo(
-    () =>
-      services.reduce((best, current) => {
-        const currentTime = Number.parseInt(current.data.waitTime.replace(' min', ''))
-        const bestTime = Number.parseInt(best.data.waitTime.replace(' min', ''))
-        return currentTime < bestTime ? current : best
-      }, services[0]),
-    [services]
-  )
+  const bestWaitTime = useMemo(() => {
+    if (services.length === 0) return null
+    return services.reduce((best, current) => {
+      const currentTime = Number.parseInt(current.data.waitTime.replace(' min', ''))
+      const bestTime = Number.parseInt(best.data.waitTime.replace(' min', ''))
+      return currentTime < bestTime ? current : best
+    }, services[0])
+  }, [services])
 
   // Helper to get price comparison vs historical average
   const getPriceComparison = useCallback(
@@ -504,6 +393,19 @@ export default memo(function RideComparisonResults({
     [historicalStats]
   )
 
+  const handleRecommendationAction = useCallback((recId: string, action: string) => {
+    const sessionId = getClientSessionId()
+
+    fetch('/api/recommendations/actions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionId ? { 'x-session-id': sessionId } : {}),
+      },
+      body: JSON.stringify({ recommendationId: recId, action }),
+    }).catch(() => {})
+  }, [])
+
   // Check if we have any historical stats to display
   const hasHistoricalStats = useMemo(
     () =>
@@ -516,6 +418,21 @@ export default memo(function RideComparisonResults({
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-8">
+      {routeAccuracy === 'estimated' && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+            <div>
+              <div className="text-sm font-medium text-amber-200">Estimated route metrics</div>
+              <div className="text-sm leading-relaxed text-amber-100/90">
+                {routeWarning ||
+                  'Prices are based on estimated route metrics because live routing is temporarily unavailable.'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-normal text-foreground tracking-tight">
@@ -556,86 +473,37 @@ export default memo(function RideComparisonResults({
       </div>
 
       {/* Quick Summary */}
-      <div className="card-elevated rounded-2xl p-6 sm:p-8 shadow-lg">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-          <div className="space-y-1">
-            <div className="text-4xl font-display text-secondary">{bestPrice.data.price}</div>
-            <div className="text-sm text-muted-foreground">
-              Best Price <span className="text-foreground font-medium">({bestPrice.name})</span>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-4xl font-display text-primary">{bestWaitTime.data.waitTime}</div>
-            <div className="text-sm text-muted-foreground">
-              Fastest <span className="text-foreground font-medium">({bestWaitTime.name})</span>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-4xl font-display text-foreground">
-              $
-              {(
-                services.reduce((sum, s) => sum + parseFloat(s.data.price.replace('$', '')), 0) /
-                services.length
-              ).toFixed(0)}
-            </div>
-            <div className="text-sm text-muted-foreground">Average Price</div>
-          </div>
-        </div>
-      </div>
-
-      {/* AI Recommendation Card (with rule-based fallback) */}
-      {routeRecommendations.length > 0 && (
-        <RecommendationsPanel
-          recommendations={routeRecommendations}
-          onAction={(recommendationId, action) => {
-            const recommendation = routeRecommendations.find(rec => rec.id === recommendationId)
-            void handleRecommendationAction(
-              recommendationId,
-              action,
-              recommendation?.dataPoints.potentialSavings
-            )
-          }}
-        />
-      )}
-
-      {aiInsightState === 'loading' && (
-        <div className="card-elevated rounded-2xl border border-border/50 bg-gradient-to-r from-violet-500/5 to-blue-500/5 p-5 animate-pulse">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 bg-violet-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Sparkles className="h-4 w-4 text-violet-400" />
-            </div>
-            <span className="text-sm font-medium text-muted-foreground">
-              Analyzing your options…
-            </span>
-          </div>
-          <div className="space-y-2">
-            <div className="h-3 bg-muted/40 rounded w-full" />
-            <div className="h-3 bg-muted/40 rounded w-5/6" />
-            <div className="h-3 bg-muted/40 rounded w-4/6" />
-          </div>
-        </div>
-      )}
-
-      {aiInsightState === 'success' && aiInsight && (
-        <div className="card-elevated rounded-2xl border border-violet-500/30 bg-gradient-to-r from-violet-500/5 to-blue-500/5 p-5">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-violet-500/15 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Sparkles className="h-5 w-5 text-violet-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-sm font-medium text-violet-400">AI Recommendation</span>
-                <span className="text-xs text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full">
-                  Powered by AI
-                </span>
+      {bestPrice && bestWaitTime && (
+        <div className="card-elevated rounded-2xl p-6 sm:p-8 shadow-lg">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+            <div className="space-y-1">
+              <div className="text-4xl font-display text-secondary">{bestPrice.data.price}</div>
+              <div className="text-sm text-muted-foreground">
+                Best Price <span className="text-foreground font-medium">({bestPrice.name})</span>
               </div>
-              <p className="text-foreground text-sm leading-relaxed">{aiInsight}</p>
+            </div>
+            <div className="space-y-1">
+              <div className="text-4xl font-display text-primary">{bestWaitTime.data.waitTime}</div>
+              <div className="text-sm text-muted-foreground">
+                Fastest <span className="text-foreground font-medium">({bestWaitTime.name})</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="text-4xl font-display text-foreground">
+                $
+                {(
+                  services.reduce((sum, s) => sum + parseFloat(s.data.price.replace('$', '')), 0) /
+                  services.length
+                ).toFixed(0)}
+              </div>
+              <div className="text-sm text-muted-foreground">Average Price</div>
             </div>
           </div>
         </div>
       )}
 
-      {(aiInsightState === 'error' || aiInsightState === 'rate-limited') && insights && (
+      {/* Smart Recommendation */}
+      {insights && (
         <div className="card-elevated rounded-2xl border-l-4 border-l-secondary bg-secondary/5">
           <div className="p-5 flex items-start gap-4">
             <div className="w-10 h-10 bg-secondary/10 text-secondary flex items-center justify-center flex-shrink-0 rounded-xl">
@@ -655,11 +523,11 @@ export default memo(function RideComparisonResults({
           <div
             key={service.name}
             className={`card-elevated card-shine rounded-2xl overflow-hidden transition-all duration-300 relative group hover:-translate-y-1 hover:shadow-xl
-              ${service.name === bestPrice.name ? 'border-secondary shadow-[0_0_20px_hsl(var(--secondary)/0.3)]' : 'hover:border-foreground/30'}
+              ${service.name === bestPrice?.name ? 'border-secondary shadow-[0_0_20px_hsl(var(--secondary)/0.3)]' : 'hover:border-foreground/30'}
             `}
           >
             {/* Recommended Banner */}
-            {service.name === bestPrice.name && (
+            {service.name === bestPrice?.name && (
               <div className="absolute top-3 right-3 bg-secondary text-secondary-foreground text-xs font-medium px-3 py-1 rounded-full z-10">
                 Best Price
               </div>
@@ -709,7 +577,7 @@ export default memo(function RideComparisonResults({
                   <span className="text-sm text-muted-foreground">Estimated Fare</span>
                   <div
                     className={`text-4xl font-display font-semibold tracking-tight tabular-nums ${
-                      service.name === bestPrice.name ? 'text-secondary' : 'text-foreground'
+                      service.name === bestPrice?.name ? 'text-secondary' : 'text-foreground'
                     }`}
                   >
                     {service.data.price}
@@ -723,7 +591,7 @@ export default memo(function RideComparisonResults({
                   <div className="text-xs text-muted-foreground mb-1">Wait Time</div>
                   <div
                     className={`text-xl font-semibold ${
-                      service.name === bestWaitTime.name ? 'text-primary' : 'text-foreground'
+                      service.name === bestWaitTime?.name ? 'text-primary' : 'text-foreground'
                     }`}
                   >
                     {service.data.waitTime}
@@ -772,6 +640,14 @@ export default memo(function RideComparisonResults({
         ))}
       </div>
 
+      {/* Route Insights */}
+      {aiRecommendations.length > 0 && (
+        <RecommendationsPanel
+          recommendations={aiRecommendations}
+          onAction={handleRecommendationAction}
+        />
+      )}
+
       {/* Additional Information */}
       <div className="space-y-4">
         {/* Surge Information */}
@@ -789,6 +665,25 @@ export default memo(function RideComparisonResults({
                 </span>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Time Recommendations */}
+        {timeRecommendations.length > 0 && (
+          <div className="card-elevated rounded-2xl border-secondary/30 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-secondary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Clock className="w-5 h-5 text-secondary" />
+              </div>
+              <span className="font-medium text-foreground">Best Time Tips</span>
+            </div>
+            <ul className="ml-13 space-y-1">
+              {timeRecommendations.map((tip, index) => (
+                <li key={index} className="text-sm text-muted-foreground">
+                  {tip}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -898,7 +793,7 @@ export default memo(function RideComparisonResults({
       </div>
 
       {/* Price Alert Modal */}
-      {showPriceAlert && (
+      {showPriceAlert && bestPrice && (
         <PriceAlert
           currentBestPrice={Number.parseFloat(bestPrice.data.price.replace('$', ''))}
           onSetAlert={handleSetPriceAlert}
@@ -909,18 +804,8 @@ export default memo(function RideComparisonResults({
       {/* Auth Dialog */}
       {showAuthDialog && (
         <ModalPortal>
-          <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
-            role="presentation"
-            onClick={() => setShowAuthDialog(false)}
-          >
-            <div
-              className="relative z-[10000] w-full max-w-md glass-card rounded-2xl overflow-hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="auth-dialog-title"
-              onClick={event => event.stopPropagation()}
-            >
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+            <div className="relative z-[10000] w-full max-w-md glass-card rounded-2xl overflow-hidden">
               <AuthDialog
                 onClose={() => setShowAuthDialog(false)}
                 onSuccess={() => setShowAuthDialog(false)}

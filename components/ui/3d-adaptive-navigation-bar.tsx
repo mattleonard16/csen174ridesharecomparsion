@@ -1,15 +1,21 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import { useTheme } from 'next-themes'
+import { useIsMounted } from '@/lib/hooks/useIsMounted'
 
 import { motion, useSpring, AnimatePresence } from 'framer-motion'
+import { getScrollContainer, scrollToSection } from '@/lib/dom'
 
 interface NavItem {
   label: string
 
   id: string
 }
+
+const COLLAPSED_WIDTH = 140
+const EXPANDED_WIDTH = 580
 
 /**
 
@@ -20,26 +26,20 @@ interface NavItem {
  */
 
 export const PillBase: React.FC = () => {
+  const pathname = usePathname()
   const [activeSection, setActiveSection] = useState('home')
 
   const [expanded, setExpanded] = useState(false)
-
-  const [hovering, setHovering] = useState(false)
+  const [expandedWidth, setExpandedWidth] = useState(EXPANDED_WIDTH)
 
   const [isTransitioning, setIsTransitioning] = useState(false)
 
-  const containerRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
 
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const prevSectionRef = useRef('home')
-
   const { resolvedTheme } = useTheme()
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  )
+  const mounted = useIsMounted()
   const isDark = mounted && resolvedTheme === 'dark'
 
   const navColors = useMemo(
@@ -73,7 +73,31 @@ export const PillBase: React.FC = () => {
 
   // Spring animations for smooth motion
 
-  const pillWidth = useSpring(140, { stiffness: 220, damping: 25, mass: 1 })
+  const pillWidth = useSpring(COLLAPSED_WIDTH, { stiffness: 220, damping: 25, mass: 1 })
+
+  const expandNav = useCallback(() => {
+    setExpanded(true)
+    pillWidth.set(expandedWidth)
+
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current)
+    }
+  }, [expandedWidth, pillWidth])
+
+  const collapseNav = useCallback(() => {
+    setExpanded(false)
+    pillWidth.set(COLLAPSED_WIDTH)
+  }, [pillWidth])
+
+  const scheduleCollapse = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current)
+    }
+
+    hoverTimeoutRef.current = setTimeout(() => {
+      collapseNav()
+    }, 600)
+  }, [collapseNav])
 
   // Cleanup hover timeout on unmount
   useEffect(() => {
@@ -82,9 +106,37 @@ export const PillBase: React.FC = () => {
     }
   }, [])
 
+  useEffect(() => {
+    const updateExpandedWidth = () => {
+      setExpandedWidth(Math.max(COLLAPSED_WIDTH, Math.min(EXPANDED_WIDTH, window.innerWidth - 32)))
+    }
+
+    updateExpandedWidth()
+    window.addEventListener('resize', updateExpandedWidth)
+
+    return () => window.removeEventListener('resize', updateExpandedWidth)
+  }, [])
+
+  useEffect(() => {
+    if (expanded) {
+      pillWidth.set(expandedWidth)
+    }
+  }, [expanded, expandedWidth, pillWidth])
+
   // Scroll detection to update active section
   useEffect(() => {
-    const handleScroll = () => {
+    if (pathname !== '/') return
+
+    const firstSection = navItems
+      .map(item => document.getElementById(item.id))
+      .find(Boolean) as HTMLElement | null
+    const scrollContainer = getScrollContainer(firstSection)
+
+    let rafId: number | null = null
+
+    const updateActiveSection = () => {
+      rafId = null
+
       const sections = navItems
         .map(item => {
           const element = document.getElementById(item.id)
@@ -101,7 +153,10 @@ export const PillBase: React.FC = () => {
         })
         .filter(Boolean) as Array<{ id: string; top: number; bottom: number; center: number }>
 
-      const viewportCenter = window.innerHeight / 2
+      const viewportCenter =
+        scrollContainer === window
+          ? window.innerHeight / 2
+          : (scrollContainer as HTMLElement).clientHeight / 2
 
       // Find the section closest to viewport center
       if (sections.length === 0) return
@@ -121,35 +176,55 @@ export const PillBase: React.FC = () => {
       }
     }
 
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll() // Initial check
+    const handleScroll = () => {
+      if (rafId === null) {
+        rafId = requestAnimationFrame(updateActiveSection)
+      }
+    }
 
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [navItems])
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+    updateActiveSection() // Initial check
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll)
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+    }
+  }, [navItems, pathname])
+
+  useEffect(() => {
+    if (!expanded) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!navRef.current?.contains(event.target as Node)) {
+        collapseNav()
+      }
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        collapseNav()
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [collapseNav, expanded])
 
   // Handle hover expansion
 
   const handleMouseEnter = () => {
-    setHovering(true)
-    setExpanded(true)
-    pillWidth.set(580)
-
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current)
-    }
+    expandNav()
   }
 
   const handleMouseLeave = () => {
-    setHovering(false)
-
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current)
-    }
-
-    hoverTimeoutRef.current = setTimeout(() => {
-      setExpanded(false)
-      pillWidth.set(140)
-    }, 600)
+    scheduleCollapse()
   }
 
   const handleSectionClick = (sectionId: string) => {
@@ -157,31 +232,18 @@ export const PillBase: React.FC = () => {
 
     setIsTransitioning(true)
 
-    prevSectionRef.current = sectionId
-
     setActiveSection(sectionId)
 
-    // Scroll to section
+    // Scroll to section — use shared helper that disables snap during scroll
+    const firstSection = navItems
+      .map(item => document.getElementById(item.id))
+      .find(Boolean) as HTMLElement | null
+    const scrollContainer = getScrollContainer(firstSection)
 
-    const element = document.getElementById(sectionId)
-
-    if (element) {
-      element.scrollIntoView({
-        behavior: 'smooth',
-
-        block: 'start',
-      })
-    }
+    scrollToSection(sectionId, scrollContainer)
 
     // Collapse the pill after selection
-    setHovering(false)
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current)
-    }
-    hoverTimeoutRef.current = setTimeout(() => {
-      setExpanded(false)
-      pillWidth.set(140)
-    }, 600)
+    scheduleCollapse()
 
     // Reset transition state after animation completes
 
@@ -192,8 +254,13 @@ export const PillBase: React.FC = () => {
 
   const activeItem = navItems.find(item => item.id === activeSection)
 
+  if (pathname !== '/') {
+    return null
+  }
+
   return (
     <motion.nav
+      ref={navRef}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className="relative rounded-full"
@@ -437,7 +504,6 @@ export const PillBase: React.FC = () => {
       {/* Navigation items container */}
 
       <div
-        ref={containerRef}
         className="relative z-10 h-full flex items-center justify-center px-6"
         style={{
           fontFamily:
@@ -449,8 +515,9 @@ export const PillBase: React.FC = () => {
           <div className="flex items-center relative">
             <AnimatePresence mode="wait">
               {activeItem && (
-                <motion.span
+                <motion.button
                   key={activeItem.id}
+                  type="button"
                   initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
@@ -458,12 +525,19 @@ export const PillBase: React.FC = () => {
                     duration: 0.25,
                     ease: [0.4, 0.0, 0.2, 1],
                   }}
+                  onClick={expandNav}
+                  aria-label="Open section navigation"
+                  aria-expanded={expanded}
                   style={{
                     fontSize: '15.5px',
                     fontWeight: 680,
                     color: navColors.activeText,
                     letterSpacing: '0.45px',
                     whiteSpace: 'nowrap',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '10px 16px',
                     fontFamily:
                       'var(--font-dm-sans), -apple-system, BlinkMacSystemFont, "SF Pro Display", Poppins, sans-serif',
                     WebkitFontSmoothing: 'antialiased',
@@ -484,7 +558,7 @@ export const PillBase: React.FC = () => {
                   }}
                 >
                   {activeItem.label}
-                </motion.span>
+                </motion.button>
               )}
             </AnimatePresence>
           </div>

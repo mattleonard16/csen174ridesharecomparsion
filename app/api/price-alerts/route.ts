@@ -3,23 +3,9 @@ import { withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { createPriceAlert } from '@/lib/database'
 import { auth } from '@/auth'
+import { logError } from '@/lib/monitoring'
+import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 import { z } from 'zod'
-
-/**
- * Get or generate a request ID for traceability
- */
-function getRequestId(request: NextRequest): string {
-  return request.headers.get('x-request-id') ?? crypto.randomUUID()
-}
-
-/**
- * Create response headers with request ID
- */
-function createResponseHeaders(requestId: string): Record<string, string> {
-  return {
-    'x-request-id': requestId,
-  }
-}
 
 const PriceAlertSchema = z.object({
   routeId: z.string().min(1, 'Route ID is required'),
@@ -30,6 +16,7 @@ const PriceAlertSchema = z.object({
 
 async function handlePost(request: NextRequest) {
   const requestId = getRequestId(request)
+  let userId: string | undefined
 
   try {
     // Auth check
@@ -40,6 +27,7 @@ async function handlePost(request: NextRequest) {
         { status: 401, headers: createResponseHeaders(requestId) }
       )
     }
+    userId = session.user.id
 
     const body = await request.json()
 
@@ -79,6 +67,13 @@ async function handlePost(request: NextRequest) {
     )
   } catch (error: unknown) {
     const err = error as Error
+    logError({
+      error: err,
+      route: 'api/price-alerts.POST',
+      requestId,
+      userId,
+    })
+
     return NextResponse.json(
       { error: 'Failed to create price alert', detail: err?.message },
       { status: 500, headers: createResponseHeaders(requestId) }

@@ -10,4 +10,5 @@ test-results
 *.min.css
 package-lock.json
 public/workbox-*.js
-public/sw.js 
+public/sw.js
+.planning
