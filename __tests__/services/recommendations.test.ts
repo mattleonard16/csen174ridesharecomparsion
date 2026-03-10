@@ -1,4 +1,15 @@
 import { generateRecommendations } from '@/lib/services/recommendations'
+import { getCached } from '@/lib/cache/redis-cache'
+
+// Mock redis-cache — pass-through by default (cache miss: always call compute)
+jest.mock('@/lib/cache/redis-cache', () => ({
+  getCached: jest.fn(async (_key: string, _ttl: number, compute: () => Promise<unknown>) => ({
+    value: await compute(),
+    cacheHit: false,
+  })),
+}))
+
+const mockGetCached = getCached as jest.MockedFunction<typeof getCached>
 
 // Mock prisma
 jest.mock('@/lib/prisma', () => ({
@@ -71,6 +82,13 @@ function createInsights(
 describe('Recommendation Engine', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    // Restore default pass-through (cache miss) behavior for getCached
+    mockGetCached.mockImplementation(
+      async (_key: string, _ttl: number, compute: () => Promise<unknown>) => ({
+        value: await compute(),
+        cacheHit: false,
+      })
+    )
   })
 
   describe('generateRecommendations', () => {
@@ -248,32 +266,30 @@ describe('Recommendation Engine', () => {
       expect(withIds[0].id).toBe('db-rec-1')
     })
 
-    it('uses cache for repeated requests', async () => {
-      const insights = createInsights()
+    it('uses cache for repeated requests — getCached hit path skips compute', async () => {
+      const cachedOutput = {
+        recommendations: [
+          {
+            type: 'DEPARTURE_TIME' as const,
+            title: 'Better Time',
+            message: 'Ride at 2 PM',
+            confidence: 0.85,
+            dataPoints: { bestHour: 14, potentialSavings: 5 },
+          },
+        ],
+      }
 
-      mockGetOrComputeInsights
-        .mockResolvedValueOnce(insights)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null)
+      // Simulate getCached returning a cached value without calling compute
+      mockGetCached.mockResolvedValueOnce({ value: cachedOutput, cacheHit: true })
 
-      const timestamp = new Date('2025-06-15T08:00:00')
-
-      // First call
-      const result1 = await generateRecommendations({
+      const result = await generateRecommendations({
         routeId: 'cache-test-route',
-        timestamp,
+        timestamp: new Date('2025-06-15T08:00:00'),
       })
 
-      // Second call - should use cache
-      const result2 = await generateRecommendations({
-        routeId: 'cache-test-route',
-        timestamp,
-      })
-
-      expect(result1).toEqual(result2)
-      // getOrComputeInsights should only be called once (4 services)
-      expect(mockGetOrComputeInsights).toHaveBeenCalledTimes(4)
+      expect(result).toEqual(cachedOutput)
+      // compute was not called — so getOrComputeInsights was never called
+      expect(mockGetOrComputeInsights).not.toHaveBeenCalled()
     })
 
     it('does not share cached user-specific recommendations across users', async () => {

@@ -11,19 +11,10 @@ import { getOrComputeInsights } from './insights-aggregator'
 import { mapServiceToEnum, RIDE_SERVICE_NAMES } from '@/lib/service-mappings'
 import { pricingEngine } from '@/lib/pricing'
 import type { AIRecommendation } from '@/types'
+import { getCached } from '@/lib/cache/redis-cache'
 
-// In-memory recommendation cache (15min TTL)
-const REC_CACHE = new Map<string, { value: RecommendationOutput; expiresAt: number }>()
-const REC_CACHE_TTL_MS = 15 * 60 * 1000 // 15 minutes
-const MAX_REC_CACHE_SIZE = 500
+const REC_TTL_SECONDS = 900 // 15 minutes
 const RECOMMENDATION_CACHE_VERSION = 'v2'
-
-function cleanupExpiredEntries<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
-  const now = Date.now()
-  for (const [key, entry] of Array.from(cache.entries())) {
-    if (entry.expiresAt <= now) cache.delete(key)
-  }
-}
 
 interface InsightsData {
   cheapestHour: number
@@ -264,114 +255,111 @@ export async function generateRecommendations(
   const timestamp = input.timestamp ?? new Date()
   const currentHour = timestamp.getHours()
 
-  // Check cache
   const cacheKey = getCacheKey(input, timestamp)
-  const cached = REC_CACHE.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value
-  }
 
-  const recommendations: AIRecommendation[] = []
+  const { value: output } = await getCached<RecommendationOutput>(
+    cacheKey,
+    REC_TTL_SECONDS,
+    async () => {
+      const recommendations: AIRecommendation[] = []
 
-  // If we have a routeId, generate data-driven recommendations
-  if (input.routeId) {
-    try {
-      // Fetch insights for all services in parallel
-      const insightsMap = new Map<string, InsightsData>()
-      const insightResults = await Promise.allSettled(
-        RIDE_SERVICE_NAMES.map(async serviceName => {
-          const serviceEnum = mapServiceToEnum(serviceName)
-          const insights = await getOrComputeInsights(input.routeId!, serviceEnum)
-          return { serviceName, insights }
-        })
-      )
+      // If we have a routeId, generate data-driven recommendations
+      if (input.routeId) {
+        try {
+          // Fetch insights for all services in parallel
+          const insightsMap = new Map<string, InsightsData>()
+          const insightResults = await Promise.allSettled(
+            RIDE_SERVICE_NAMES.map(async serviceName => {
+              const serviceEnum = mapServiceToEnum(serviceName)
+              const insights = await getOrComputeInsights(input.routeId!, serviceEnum)
+              return { serviceName, insights }
+            })
+          )
 
-      for (const result of insightResults) {
-        if (result.status === 'fulfilled' && result.value.insights) {
-          insightsMap.set(result.value.serviceName, result.value.insights)
+          for (const result of insightResults) {
+            if (result.status === 'fulfilled' && result.value.insights) {
+              insightsMap.set(result.value.serviceName, result.value.insights)
+            }
+          }
+
+          // Use current service's insights for time/surge recs, or first available
+          const currentServiceKey = input.currentService?.toLowerCase() ?? 'uber'
+          const primaryInsights =
+            insightsMap.get(currentServiceKey) ?? insightsMap.values().next().value
+
+          if (primaryInsights) {
+            // Departure time recommendation
+            const departureRec = generateDepartureTimeRec(primaryInsights, currentHour)
+            if (departureRec) recommendations.push(departureRec)
+
+            // Surge forecast recommendation
+            const surgeActive = input.currentPrice
+              ? primaryInsights.surgeProbabilityByHour[String(currentHour)] > 0.5
+              : false
+            const surgeRec = generateSurgeForecastRec(primaryInsights, currentHour, surgeActive)
+            if (surgeRec) recommendations.push(surgeRec)
+          }
+
+          // Service choice recommendation (uses all services)
+          if (insightsMap.size >= 2) {
+            const serviceRec = generateServiceChoiceRec(insightsMap, input.currentService)
+            if (serviceRec) recommendations.push(serviceRec)
+          }
+        } catch (error) {
+          console.warn('Failed to generate data-driven recommendations:', error)
         }
       }
 
-      // Use current service's insights for time/surge recs, or first available
-      const currentServiceKey = input.currentService?.toLowerCase() ?? 'uber'
-      const primaryInsights =
-        insightsMap.get(currentServiceKey) ?? insightsMap.values().next().value
-
-      if (primaryInsights) {
-        // Departure time recommendation
-        const departureRec = generateDepartureTimeRec(primaryInsights, currentHour)
-        if (departureRec) recommendations.push(departureRec)
-
-        // Surge forecast recommendation
-        const surgeActive = input.currentPrice
-          ? primaryInsights.surgeProbabilityByHour[String(currentHour)] > 0.5
-          : false
-        const surgeRec = generateSurgeForecastRec(primaryInsights, currentHour, surgeActive)
-        if (surgeRec) recommendations.push(surgeRec)
+      // Savings insight for authenticated users
+      if (input.userId) {
+        const savingsRec = await generateSavingsInsight(input.userId)
+        if (savingsRec) recommendations.push(savingsRec)
       }
 
-      // Service choice recommendation (uses all services)
-      if (insightsMap.size >= 2) {
-        const serviceRec = generateServiceChoiceRec(insightsMap, input.currentService)
-        if (serviceRec) recommendations.push(serviceRec)
+      // Fallback if no data-driven recs generated
+      if (recommendations.length === 0) {
+        recommendations.push(...getFallbackRecommendations(timestamp))
       }
-    } catch (error) {
-      console.warn('Failed to generate data-driven recommendations:', error)
+
+      // Limit to 3 recommendations, sorted by confidence
+      const sortedRecs = [...recommendations].sort((a, b) => b.confidence - a.confidence).slice(0, 3)
+
+      const result: RecommendationOutput = { recommendations: sortedRecs }
+
+      // Persist to DB if we have a routeId (non-blocking for feature)
+      if (input.routeId && sortedRecs.length > 0) {
+        try {
+          const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000)
+          const persisted = await Promise.all(
+            sortedRecs.map(rec =>
+              prisma.recommendation.create({
+                data: {
+                  routeId: input.routeId!,
+                  userId: input.userId ?? null,
+                  type: rec.type,
+                  title: rec.title,
+                  message: rec.message,
+                  dataPoints: rec.dataPoints,
+                  confidence: rec.confidence,
+                  validUntil,
+                },
+              })
+            )
+          )
+          return {
+            recommendations: sortedRecs.map((rec, i) => ({
+              ...rec,
+              id: persisted[i].id,
+            })),
+          }
+        } catch (error) {
+          console.warn('Failed to persist recommendations:', error)
+        }
+      }
+
+      return result
     }
-  }
-
-  // Savings insight for authenticated users
-  if (input.userId) {
-    const savingsRec = await generateSavingsInsight(input.userId)
-    if (savingsRec) recommendations.push(savingsRec)
-  }
-
-  // Fallback if no data-driven recs generated
-  if (recommendations.length === 0) {
-    recommendations.push(...getFallbackRecommendations(timestamp))
-  }
-
-  // Limit to 3 recommendations, sorted by confidence
-  const sortedRecs = [...recommendations].sort((a, b) => b.confidence - a.confidence).slice(0, 3)
-
-  const output: RecommendationOutput = { recommendations: sortedRecs }
-
-  // Persist to DB if we have a routeId (non-blocking for feature)
-  if (input.routeId && sortedRecs.length > 0) {
-    try {
-      const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000)
-      const persisted = await Promise.all(
-        sortedRecs.map(rec =>
-          prisma.recommendation.create({
-            data: {
-              routeId: input.routeId!,
-              userId: input.userId ?? null,
-              type: rec.type,
-              title: rec.title,
-              message: rec.message,
-              dataPoints: rec.dataPoints,
-              confidence: rec.confidence,
-              validUntil,
-            },
-          })
-        )
-      )
-      output.recommendations = sortedRecs.map((rec, i) => ({
-        ...rec,
-        id: persisted[i].id,
-      }))
-    } catch (error) {
-      console.warn('Failed to persist recommendations:', error)
-    }
-  }
-
-  // Cache result
-  cleanupExpiredEntries(REC_CACHE)
-  if (REC_CACHE.size >= MAX_REC_CACHE_SIZE) {
-    const firstKey = REC_CACHE.keys().next().value
-    if (firstKey) REC_CACHE.delete(firstKey)
-  }
-  REC_CACHE.set(cacheKey, { value: output, expiresAt: Date.now() + REC_CACHE_TTL_MS })
+  )
 
   return output
 }
