@@ -9,8 +9,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Test Infrastructure
 
-- [ ] **TEST-01**: Jest setup file loads correctly (`setupFilesAfterEnv` typo fixed)
-- [ ] **TEST-02**: Coverage config measures full codebase (components, lib, hooks — not just app/api/ and lib/services/)
+- [x] **TEST-01**: Jest setup file loads correctly (`setupFilesAfterEnv` typo fixed)
+- [x] **TEST-02**: Coverage config measures full codebase (components, lib, hooks — not just app/api/ and lib/services/)
 - [ ] **TEST-03**: E2E test covers happy path comparison flow (enter addresses → get results → see map route)
 
 ### Observability
@@ -83,8 +83,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | Phase 1 | Pending |
-| TEST-02 | Phase 1 | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
 | TEST-03 | Phase 4 | Pending |
 | OBSV-01 | Phase 1 | Pending |
 | OBSV-02 | Phase 1 | Pending |
