@@ -219,7 +219,8 @@ function createComparisonCacheKey(
   pickup: Coordinates,
   destination: Coordinates,
   services: ServiceType[],
-  timestamp: Date
+  timestamp: Date,
+  routeAccuracy: RouteAccuracy
 ): string {
   const pickupKey = `${formatCoordinateValue(pickup[0])},${formatCoordinateValue(pickup[1])}`
   const destinationKey = `${formatCoordinateValue(destination[0])},${formatCoordinateValue(destination[1])}`
@@ -231,6 +232,7 @@ function createComparisonCacheKey(
     destinationKey,
     services.join(','),
     getTimeBucket(timestamp),
+    routeAccuracy,
   ].join(':')
 }
 
@@ -270,11 +272,12 @@ async function getComparisonCore(
   routeAccuracy: RouteAccuracy,
   routeWarning?: string
 ): Promise<CachedComparisonCore> {
-  const cacheKey = createComparisonCacheKey(pickup, destination, services, timestamp)
+  const cacheKey = createComparisonCacheKey(pickup, destination, services, timestamp, routeAccuracy)
   const cached = COMPARISON_CACHE.get(cacheKey)
   const now = Date.now()
 
   if (cached && cached.expiresAt > now) {
+    log('Cache hit', { event: 'cache_hit', cacheKey, cacheLayer: 'memory' })
     return cached.value
   }
 
@@ -334,6 +337,7 @@ async function getComparisonCore(
       now +
       (isPrecomputedRoute ? PRECOMPUTED_COMPARISON_CACHE_TTL_MS : DYNAMIC_COMPARISON_CACHE_TTL_MS),
   })
+  log('Cache miss', { event: 'cache_miss', cacheKey, cacheLayer: 'memory' })
 
   return core
 }
@@ -531,6 +535,7 @@ async function geocodeWithCache(address: string): Promise<Coordinates> {
   const now = Date.now()
 
   if (cached && cached.expiresAt > now) {
+    log('Cache hit', { event: 'cache_hit', cacheKey, cacheLayer: 'memory' })
     return cached.value
   }
 
@@ -543,6 +548,7 @@ async function geocodeWithCache(address: string): Promise<Coordinates> {
         value: airport.coordinates,
         expiresAt: now + API_CONFIG.CACHE_TTL,
       })
+      log('Cache miss', { event: 'cache_miss', cacheKey, cacheLayer: 'memory' })
       return airport.coordinates
     }
   }
@@ -581,6 +587,7 @@ async function geocodeWithCache(address: string): Promise<Coordinates> {
     value: coordinates,
     expiresAt: now + API_CONFIG.CACHE_TTL,
   })
+  log('Cache miss', { event: 'cache_miss', cacheKey, cacheLayer: 'memory' })
 
   return coordinates
 }
@@ -594,6 +601,7 @@ async function getRouteMetrics(
   const cached = ROUTE_CACHE.get(cacheKey)
 
   if (cached && cached.expiresAt > now) {
+    log('Cache hit', { event: 'cache_hit', cacheKey, cacheLayer: 'memory' })
     return cached.value
   }
 
@@ -632,6 +640,7 @@ async function getRouteMetrics(
     value: metrics,
     expiresAt: now + API_CONFIG.ROUTE_CACHE_TTL,
   })
+  log('Cache miss', { event: 'cache_miss', cacheKey, cacheLayer: 'memory' })
 
   return metrics
 }
@@ -805,6 +814,7 @@ function getEstimatedRouteMetrics(pickup: Coordinates, destination: Coordinates)
   const cached = ROUTE_CACHE.get(cacheKey)
 
   if (cached && cached.expiresAt > now) {
+    log('Cache hit', { event: 'cache_hit', cacheKey, cacheLayer: 'memory' })
     return cached.value
   }
 
@@ -825,6 +835,7 @@ function getEstimatedRouteMetrics(pickup: Coordinates, destination: Coordinates)
     value: metrics,
     expiresAt: now + API_CONFIG.ROUTE_CACHE_TTL,
   })
+  log('Cache miss', { event: 'cache_miss', cacheKey, cacheLayer: 'memory' })
 
   return metrics
 }

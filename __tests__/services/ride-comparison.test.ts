@@ -11,6 +11,12 @@ jest.mock('@/lib/database', () => ({
   logSearch: jest.fn(async () => undefined),
 }))
 
+jest.mock('@/lib/monitoring', () => ({
+  log: jest.fn(),
+  logError: jest.fn(),
+  trackPerformance: jest.fn(),
+}))
+
 const mockFetch = jest.fn()
 const originalFetch = global.fetch
 
@@ -347,6 +353,15 @@ describe('ride-comparison service', () => {
       await compareRidesByAddresses(uniqueAddress1, uniqueAddress2)
       const callsAfterSecond = mockFetch.mock.calls.length
       expect(callsAfterSecond).toBe(0)
+
+      const { log: mockLog } = jest.requireMock('@/lib/monitoring') as { log: jest.Mock }
+      expect(mockLog).toHaveBeenCalledWith(
+        'Cache hit',
+        expect.objectContaining({
+          event: 'cache_hit',
+          cacheLayer: 'memory',
+        })
+      )
     })
 
     it('should cache route metrics', async () => {
