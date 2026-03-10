@@ -89,6 +89,8 @@ export interface AIRecommendation {
   }
 }
 
+export type RouteAccuracy = 'exact' | 'estimated'
+
 // API response types
 export interface ComparisonApiResponse {
   routeId?: string | null
@@ -99,6 +101,8 @@ export interface ComparisonApiResponse {
   surgeInfo: SurgeInfo
   timeRecommendations: string[]
   aiRecommendations?: AIRecommendation[]
+  routeAccuracy?: RouteAccuracy
+  routeWarning?: string
 }
 
 // Common places type
