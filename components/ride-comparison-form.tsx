@@ -336,7 +336,16 @@ export default function RideComparisonForm({
     if (wasSuccessful) {
       setShowForm(false)
     }
-  }, [pickup, destination, pickupCoords, destinationCoords, isLoading, submitComparison, getRecaptchaToken, clearComparisonError])
+  }, [
+    pickup,
+    destination,
+    pickupCoords,
+    destinationCoords,
+    isLoading,
+    submitComparison,
+    getRecaptchaToken,
+    clearComparisonError,
+  ])
 
   const handleUseMyLocation = useCallback(async () => {
     const result = await getLocation()
