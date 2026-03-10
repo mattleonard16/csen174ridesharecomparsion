@@ -1,4 +1,8 @@
-import { compareRidesByAddresses, compareRidesByCoordinates } from '@/lib/services/ride-comparison'
+import {
+  compareRidesByAddresses,
+  compareRidesByCoordinates,
+  resetRideComparisonCaches,
+} from '@/lib/services/ride-comparison'
 import type { Coordinates } from '@/types'
 
 jest.mock('@/lib/database', () => ({
@@ -39,6 +43,7 @@ describe('ride-comparison service', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockFetch.mockReset()
+    resetRideComparisonCaches()
     jest.useFakeTimers()
   })
 
@@ -80,18 +85,18 @@ describe('ride-comparison service', () => {
       expect(result?.insights).toBeDefined()
     })
 
-    it('should return null if pickup geocoding fails', async () => {
+    it('should fail with a typed address error when geocoding returns no results', async () => {
       mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
+        ok: true,
+        json: async () => [],
       })
 
-      const result = await compareRidesByAddresses('Invalid Address', 'Oakland, CA')
-
-      expect(result).toBeNull()
+      await expect(compareRidesByAddresses('Invalid Address', 'Oakland, CA')).rejects.toMatchObject({
+        code: 'ADDRESS_NOT_FOUND',
+      })
     })
 
-    it('should return null if destination geocoding fails', async () => {
+    it('should fail with a typed address error when destination geocoding returns no results', async () => {
       const uniquePickup = `Valid Address ${Math.random()}`
       const uniqueDest = `Invalid Address ${Math.random()}`
 
@@ -114,9 +119,9 @@ describe('ride-comparison service', () => {
         })
       })
 
-      const result = await compareRidesByAddresses(uniquePickup, uniqueDest)
-
-      expect(result).toBeNull()
+      await expect(compareRidesByAddresses(uniquePickup, uniqueDest)).rejects.toMatchObject({
+        code: 'ADDRESS_NOT_FOUND',
+      })
     })
 
     it('should sanitize input addresses', async () => {
@@ -273,20 +278,31 @@ describe('ride-comparison service', () => {
       expect(Object.keys(result.results)).toEqual(['uber'])
     })
 
-    it('persists route distance in miles rather than kilometers', async () => {
-      const { findOrCreateRoute } = jest.requireMock('@/lib/database') as {
-        findOrCreateRoute: jest.Mock
-      }
+    it('falls back to estimated routing when OSRM times out', async () => {
+      mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined
 
-      await compareRidesByCoordinates(
+        return new Promise((_, reject) => {
+          signal?.addEventListener('abort', () => {
+            const abortError = new Error('This operation was aborted')
+            abortError.name = 'AbortError'
+            reject(abortError)
+          })
+        })
+      })
+
+      const comparisonPromise = compareRidesByCoordinates(
         { name: 'Pickup', coordinates: pickupCoords },
         { name: 'Destination', coordinates: destCoords },
         ['uber']
       )
 
-      expect(findOrCreateRoute).toHaveBeenCalled()
-      const distanceArgument = findOrCreateRoute.mock.calls[0][4] as number
-      expect(distanceArgument).toBeCloseTo(3.106855, 5)
+      await jest.advanceTimersByTimeAsync(7000)
+      const result = await comparisonPromise
+
+      expect(result.routeAccuracy).toBe('estimated')
+      expect(result.routeWarning).toMatch(/estimated route metrics/i)
+      expect(result.results.uber).toBeDefined()
     })
   })
 
@@ -346,6 +362,43 @@ describe('ride-comparison service', () => {
 
       expect(callsAfterSecond).toBe(callsAfterFirst)
     })
+
+    it('keeps estimated route metrics separate from exact route metrics', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          json: async () => ({}),
+        })
+
+      const degradedPromise = compareRidesByCoordinates(
+        { name: 'Pickup', coordinates: pickupCoords },
+        { name: 'Destination', coordinates: destCoords },
+        ['uber']
+      )
+      await jest.advanceTimersByTimeAsync(500)
+      const degraded = await degradedPromise
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => MOCK_OSRM_RESPONSE,
+      })
+
+      const exact = await compareRidesByCoordinates(
+        { name: 'Pickup', coordinates: pickupCoords },
+        { name: 'Destination', coordinates: destCoords },
+        ['uber']
+      )
+
+      expect(degraded.routeAccuracy).toBe('estimated')
+      expect(exact.routeAccuracy).toBe('exact')
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+    })
   })
 
   describe('resilient fetch behavior', () => {
@@ -355,36 +408,39 @@ describe('ride-comparison service', () => {
 
     it('should retry failed requests', async () => {
       mockFetch
-        .mockRejectedValueOnce(new Error('Network error'))
-        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new TypeError('Network error'))
+        .mockRejectedValueOnce(new TypeError('Network error'))
         .mockResolvedValueOnce({
           ok: true,
           json: async () => MOCK_OSRM_RESPONSE,
         })
 
-      const result = await compareRidesByCoordinates(
+      const comparisonPromise = compareRidesByCoordinates(
         { name: 'Pickup', coordinates: differentPickup },
         { name: 'Destination', coordinates: destCoords },
         ['uber']
       )
+      await jest.advanceTimersByTimeAsync(1000)
+      const result = await comparisonPromise
 
       expect(result).toBeDefined()
-      expect(mockFetch).toHaveBeenCalledTimes(3)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
     })
 
-    it('should throw error after max retries', async () => {
+    it('should fall back after max retries instead of throwing for route failures', async () => {
       const uniquePickup: Coordinates = [-122.6, 37.95]
-      mockFetch.mockRejectedValue(new Error('Network error'))
+      mockFetch.mockRejectedValue(new TypeError('Network error'))
 
-      await expect(
-        compareRidesByCoordinates(
-          { name: 'Pickup', coordinates: uniquePickup },
-          { name: 'Destination', coordinates: destCoords },
-          ['uber']
-        )
-      ).rejects.toThrow()
+      const comparisonPromise = compareRidesByCoordinates(
+        { name: 'Pickup', coordinates: uniquePickup },
+        { name: 'Destination', coordinates: destCoords },
+        ['uber']
+      )
+      await jest.advanceTimersByTimeAsync(1000)
+      const result = await comparisonPromise
 
-      expect(mockFetch).toHaveBeenCalledTimes(3)
+      expect(result.routeAccuracy).toBe('estimated')
+      expect(mockFetch).toHaveBeenCalledTimes(2)
     })
 
     it('should include User-Agent header', async () => {
@@ -403,6 +459,33 @@ describe('ride-comparison service', () => {
       expect(mockFetch.mock.calls.length).toBeGreaterThan(0)
       const fetchCall = mockFetch.mock.calls[0]
       expect(fetchCall[1]?.headers['User-Agent']).toBe('RideCompareApp/1.0')
+    })
+  })
+
+  describe('geocode failure handling', () => {
+    it('throws a timeout error when geocoding exceeds the timeout budget', async () => {
+      mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined
+
+        return new Promise((_, reject) => {
+          signal?.addEventListener('abort', () => {
+            const abortError = new Error('This operation was aborted')
+            abortError.name = 'AbortError'
+            reject(abortError)
+          })
+        })
+      })
+
+      const comparisonPromise = compareRidesByAddresses(
+        `Timeout Pickup ${Math.random()}`,
+        `Timeout Destination ${Math.random()}`
+      )
+      const rejection = expect(comparisonPromise).rejects.toMatchObject({
+        code: 'GEOCODE_TIMEOUT',
+      })
+      await jest.advanceTimersByTimeAsync(6000)
+
+      await rejection
     })
   })
 
