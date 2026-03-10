@@ -11,7 +11,7 @@ export default function RideFormSection({ selectedRoute, onRouteProcessed }: Rid
   return (
     <section
       id="compare"
-      className="relative snap-start min-h-screen bg-background overflow-visible py-8 sm:py-12 scanline-overlay"
+      className="relative snap-start min-h-screen scroll-mt-24 sm:scroll-mt-28 bg-background overflow-visible py-8 sm:py-12 scanline-overlay"
     >
       {/* Dot Grid Background */}
       <div className="absolute inset-0 bg-dot-grid opacity-30" />

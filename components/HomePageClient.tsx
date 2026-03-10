@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import Hero from '@/components/Hero'
 import RouteList from '@/components/RouteList'
 import FeatureGrid from '@/components/FeatureGrid'
 import RideFormSection from '@/components/RideFormSection'
+import { scrollToSection } from '@/lib/dom'
 
 export default function HomePageClient() {
   const [selectedRoute, setSelectedRoute] = useState<{
@@ -12,6 +13,7 @@ export default function HomePageClient() {
     destination: string
   } | null>(null)
   const [processingRouteId, setProcessingRouteId] = useState<string | null>(null)
+  const mainRef = useRef<HTMLElement>(null)
 
   const handleRouteSelect = useCallback((route: { pickup: string; destination: string }) => {
     // Find the route ID to show processing state
@@ -25,6 +27,13 @@ export default function HomePageClient() {
     const routeId = routeMap[route.pickup as keyof typeof routeMap]
     setProcessingRouteId(routeId || null)
     setSelectedRoute(route)
+
+    // Scroll to compare section — disable snap to prevent it from fighting the scroll
+    requestAnimationFrame(() => {
+      if (mainRef.current) {
+        scrollToSection('compare', mainRef.current)
+      }
+    })
   }, [])
 
   const handleRouteProcessed = useCallback(() => {
@@ -33,7 +42,7 @@ export default function HomePageClient() {
   }, [])
 
   return (
-    <main className="scroll-snap-y overflow-y-scroll h-screen">
+    <main ref={mainRef} className="scroll-snap-y overflow-y-scroll h-screen">
       <Hero />
 
       <RouteList onRouteSelect={handleRouteSelect} processingRouteId={processingRouteId} />

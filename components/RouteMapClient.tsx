@@ -259,7 +259,9 @@ const RouteMapClient = ({ pickup, destination }: RouteMapClientProps) => {
         <div className="absolute bottom-2 left-2 z-[1000] bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
           <div className="flex items-center space-x-2">
             <div className="w-2 h-2 bg-destructive rounded-full"></div>
-            <span className="text-xs text-foreground">Using direct route</span>
+            <span className="text-xs text-foreground">
+              Live routing is temporarily unavailable. Showing an estimated direct route.
+            </span>
           </div>
         </div>
       )}

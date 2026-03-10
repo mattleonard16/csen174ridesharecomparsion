@@ -144,9 +144,8 @@ const COMMON_PLACES: CommonPlaces = {
   },
 }
 
-// Constants
-const AUTO_SUBMIT_DELAY_PRECOMPUTED_MS = 0 // Instant submit for precomputed routes
-const AUTO_SUBMIT_DELAY_DYNAMIC_MS = 50 // Minimal delay for dynamic routes
+const AUTO_SUBMIT_DELAY_PRECOMPUTED_MS = 0
+const AUTO_SUBMIT_DELAY_DYNAMIC_MS = 50
 
 interface RideComparisonFormProps {
   selectedRoute?: {
@@ -281,7 +280,6 @@ export default function RideComparisonForm({
           setDestinationCoords(coords)
         }
       } else {
-        // Fallback if airport not found
         if (airportSelectorMode === 'pickup') {
           setPickup(airportString)
         } else {
@@ -318,6 +316,27 @@ export default function RideComparisonForm({
       setShowForm(false)
     }
   }
+
+  const handleRetry = useCallback(async () => {
+    if (!pickup || !destination || isLoading) {
+      return
+    }
+
+    setLocalError('')
+    clearComparisonError()
+
+    const wasSuccessful = await submitComparison({
+      pickup,
+      destination,
+      pickupCoords,
+      destinationCoords,
+      getRecaptchaToken,
+    })
+
+    if (wasSuccessful) {
+      setShowForm(false)
+    }
+  }, [pickup, destination, pickupCoords, destinationCoords, isLoading, submitComparison, getRecaptchaToken, clearComparisonError])
 
   const handleUseMyLocation = useCallback(async () => {
     const result = await getLocation()
@@ -365,6 +384,8 @@ export default function RideComparisonForm({
   const surgeInfo = data?.surgeInfo ?? null
   const timeRecommendations = data?.timeRecommendations ?? []
   const aiRecommendations = data?.aiRecommendations ?? []
+  const routeAccuracy = data?.routeAccuracy ?? null
+  const routeWarning = data?.routeWarning ?? ''
   const mapPickupCoords = data?.pickupCoords ?? pickupCoords
   const mapDestinationCoords = data?.destinationCoords ?? destinationCoords
 
@@ -382,7 +403,6 @@ export default function RideComparisonForm({
       {showForm && (
         <div className="transition-all duration-300">
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Pickup Location Input */}
             <LocationInput
               id="pickup"
               label="Pickup Location"
@@ -415,7 +435,6 @@ export default function RideComparisonForm({
               }
             />
 
-            {/* Airport Quick Select for Pickup */}
             <div className="flex items-center justify-start ml-1">
               <button
                 type="button"
@@ -427,7 +446,6 @@ export default function RideComparisonForm({
               </button>
             </div>
 
-            {/* Destination Input */}
             <LocationInput
               id="destination"
               label="Destination"
@@ -453,7 +471,6 @@ export default function RideComparisonForm({
               }
             />
 
-            {/* Airport Quick Select for Destination */}
             <div className="flex items-center justify-start ml-1">
               <button
                 type="button"
@@ -488,7 +505,6 @@ export default function RideComparisonForm({
               )}
             </button>
 
-            {/* reCAPTCHA Protection Indicator */}
             <div className="flex items-center justify-center text-xs text-muted-foreground/70 mt-3">
               <Shield className="h-3 w-3 mr-1.5" />
               {isRecaptchaLoaded ? (
@@ -503,7 +519,6 @@ export default function RideComparisonForm({
         </div>
       )}
 
-      {/* Airport Selector Modal */}
       <AirportSelector
         isOpen={showAirportSelector}
         onClose={() => setShowAirportSelector(false)}
@@ -513,21 +528,31 @@ export default function RideComparisonForm({
 
       {errorMessage && (
         <div className="mt-6 p-4 bg-destructive/10 text-destructive rounded-xl border border-destructive/20">
-          <div className="flex items-center">
-            <svg
-              className="h-5 w-5 mr-3 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center">
+              <svg
+                className="h-5 w-5 mr-3 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="text-sm">{errorMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={isLoading || !pickup || !destination}
+              className="shrink-0 rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <span className="text-sm">{errorMessage}</span>
+              Retry
+            </button>
           </div>
         </div>
       )}
@@ -548,10 +573,8 @@ export default function RideComparisonForm({
           />
         )}
 
-        {/* Skeleton loading cards */}
         {isLoading && !results && (
           <div className="w-full max-w-6xl mx-auto space-y-8">
-            {/* Skeleton header */}
             <div className="flex items-center justify-between">
               <Skeleton className="h-10 w-48" />
               <div className="flex gap-2">
@@ -560,8 +583,6 @@ export default function RideComparisonForm({
                 <Skeleton className="h-9 w-20" />
               </div>
             </div>
-
-            {/* Skeleton quick summary */}
             <div className="card-elevated rounded-2xl p-6 sm:p-8">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                 {[1, 2, 3].map(i => (
@@ -572,14 +593,11 @@ export default function RideComparisonForm({
                 ))}
               </div>
             </div>
-
-            {/* Skeleton ride cards */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map(i => (
                 <div key={i} className="card-elevated rounded-2xl overflow-hidden">
                   <Skeleton className="h-1 w-full" />
                   <div className="p-5">
-                    {/* Header */}
                     <div className="flex items-center gap-3 mb-6">
                       <Skeleton className="w-12 h-12 rounded-xl" />
                       <div className="space-y-2">
@@ -587,16 +605,12 @@ export default function RideComparisonForm({
                         <Skeleton className="h-3 w-24" />
                       </div>
                     </div>
-
-                    {/* Price */}
                     <div className="mb-6 pb-6 border-b border-border/50">
                       <div className="flex items-baseline justify-between">
                         <Skeleton className="h-4 w-24" />
                         <Skeleton className="h-10 w-20" />
                       </div>
                     </div>
-
-                    {/* Metrics */}
                     <div className="grid grid-cols-2 gap-3 mb-6">
                       <div className="bg-muted/30 p-3 rounded-xl space-y-2">
                         <Skeleton className="h-3 w-16" />
@@ -607,8 +621,6 @@ export default function RideComparisonForm({
                         <Skeleton className="h-6 w-8" />
                       </div>
                     </div>
-
-                    {/* Buttons */}
                     <div className="space-y-3">
                       <Skeleton className="h-12 w-full rounded-xl" />
                       <Skeleton className="h-8 w-full rounded-lg" />
@@ -632,6 +644,8 @@ export default function RideComparisonForm({
             destinationCoords={data?.destinationCoords ?? null}
             timeRecommendations={timeRecommendations}
             aiRecommendations={aiRecommendations}
+            routeAccuracy={routeAccuracy}
+            routeWarning={routeWarning}
           />
         )}
       </section>

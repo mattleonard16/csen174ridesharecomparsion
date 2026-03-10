@@ -1,19 +1,16 @@
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { useState } from 'react'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/lib/auth-context'
 import { AuthDialog } from '@/components/auth-dialog'
 import ModalPortal from '@/components/ModalPortal'
+import { useIsMounted } from '@/lib/hooks/useIsMounted'
 import { User, LogOut, Sun, Moon } from 'lucide-react'
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  )
+  const mounted = useIsMounted()
 
   if (!mounted) {
     return <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
