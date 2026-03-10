@@ -30,7 +30,6 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.74.0",
     "@auth/prisma-adapter": "^2.11.1",
     "@prisma/client": "^6.16.2",
     "@radix-ui/react-label": "^2.1.4",
