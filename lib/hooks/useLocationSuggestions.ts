@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { API_CONFIG } from '@/lib/constants'
 import type { LocationSuggestion, CommonPlaces } from '@/types'
 
 // Constants
@@ -110,10 +111,10 @@ export async function searchPlaces(
     try {
       // Still fetch from API but combine results
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ' California')}&format=json&limit=3&countrycodes=us&addressdetails=1&extratags=1`,
+        `${API_CONFIG.NOMINATIM_BASE_URL}?q=${encodeURIComponent(query + ' California')}&format=json&limit=3&countrycodes=us&addressdetails=1&extratags=1`,
         {
           headers: {
-            'User-Agent': 'RideCompareApp/1.0',
+            'User-Agent': API_CONFIG.USER_AGENT,
           },
           signal,
         }
@@ -154,10 +155,10 @@ export async function searchPlaces(
   // Fallback to API only
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ' California')}&format=json&limit=5&countrycodes=us&addressdetails=1&extratags=1`,
+      `${API_CONFIG.NOMINATIM_BASE_URL}?q=${encodeURIComponent(query + ' California')}&format=json&limit=5&countrycodes=us&addressdetails=1&extratags=1`,
       {
         headers: {
-          'User-Agent': 'RideCompareApp/1.0',
+          'User-Agent': API_CONFIG.USER_AGENT,
         },
         signal,
       }

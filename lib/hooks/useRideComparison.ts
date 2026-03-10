@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getClientSessionId } from '@/lib/client-session'
+import { DEFAULT_SERVICES } from '@/lib/constants'
 import type {
   ComparisonApiResponse,
   ComparisonRequestBody,
   Coordinates,
   ServiceType,
 } from '@/types'
-
-const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
 
 type ComparisonStatus = 'idle' | 'loading' | 'refreshing' | 'success' | 'error'
 

@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { DEFAULT_SERVICES } from '@/lib/constants'
 import { withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import {
@@ -28,8 +29,6 @@ import type {
   LegacyComparisonRequest,
   ServiceType,
 } from '@/types'
-
-const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
 
 function mapCompareError(error: CompareServiceErrorCode): {
   status: number

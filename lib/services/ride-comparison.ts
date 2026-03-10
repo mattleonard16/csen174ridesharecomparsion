@@ -1,4 +1,4 @@
-import { API_CONFIG } from '@/lib/constants'
+import { API_CONFIG, DEFAULT_SERVICES } from '@/lib/constants'
 import { findOrCreateRoute, logPriceSnapshot, logSearch } from '@/lib/database'
 import { getAirportByCode, parseAirportCode } from '@/lib/airports'
 import { haversineDistanceKm } from '@/lib/geo'
@@ -148,8 +148,6 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   taxi: 'Yellow Cab',
   waymo: 'Waymo One',
 }
-
-const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
 
 const WAYMO_SERVICE_AREAS = {
   sanFrancisco: {

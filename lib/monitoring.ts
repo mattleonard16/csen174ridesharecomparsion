@@ -5,6 +5,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { redis } from '@/lib/redis'
+import { API_CONFIG } from '@/lib/constants'
 
 interface LogContext {
   userId?: string
@@ -176,7 +177,7 @@ async function checkOSRM(): Promise<{ healthy: boolean; latency?: number; error?
   const start = Date.now()
   try {
     const response = await fetch(
-      'https://router.project-osrm.org/route/v1/driving/-122.4194,37.7749;-122.2711,37.8044?overview=false',
+      `${API_CONFIG.OSRM_BASE_URL}/-122.4194,37.7749;-122.2711,37.8044?overview=false`,
       { signal: AbortSignal.timeout(5000) }
     )
     const latency = Date.now() - start
