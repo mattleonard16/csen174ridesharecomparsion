@@ -33,7 +33,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Core Features
 
 - [ ] **FEAT-01**: User sees in-app notification when a saved price alert's target price is reached
-- [ ] **FEAT-02**: Compare-rides API accepts single unified request format (legacy string format removed)
+- [x] **FEAT-02**: Compare-rides API accepts single unified request format (legacy string format removed)
 
 ### Code Quality
 
@@ -98,7 +98,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFR-06 | Phase 2 | Complete |
 | INFR-07 | Phase 3 | Complete |
 | FEAT-01 | Phase 4 | Pending |
-| FEAT-02 | Phase 3 | Pending |
+| FEAT-02 | Phase 3 | Complete |
 | QUAL-01 | Phase 3 | Complete |
 | QUAL-02 | Phase 3 | Complete |
 | QUAL-03 | Phase 3 | Complete |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 03-02-PLAN.md — AI SDK consolidation (Anthropic to OpenAI)
-last_updated: "2026-03-10T21:20:58.121Z"
+stopped_at: Completed 03-03-PLAN.md — remove legacy API request format (FEAT-02)
+last_updated: "2026-03-10T21:25:50.285Z"
 last_activity: 2026-03-10 — Roadmap created; phases derived from 19 v1 requirements
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
   percent: 33
 ---
 
@@ -58,6 +58,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 02-redis-cache-layer P02 | 11min | 2 tasks | 2 files |
 | Phase 03-ai-consolidation-code-quality P01 | 15min | 2 tasks | 8 files |
 | Phase 03-ai-consolidation-code-quality P02 | 3min | 2 tasks | 4 files |
+| Phase 03-ai-consolidation-code-quality P03 | 8min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 03-ai-consolidation-code-quality]: All external API base URLs (Nominatim, OSRM) centralized in API_CONFIG in lib/constants.ts
 - [Phase 03-ai-consolidation-code-quality]: OpenAI gpt-4o-mini replaces claude-haiku-4-5-20251001 — consolidates to single AI vendor
 - [Phase 03-ai-consolidation-code-quality]: ENV_EXAMPLE.md created (did not exist before) to satisfy CLAUDE.md reference and document OPENAI_API_KEY
+- [Phase 03-ai-consolidation-code-quality]: selectedRoute auto-submit reads coordinates from findPrecomputedRouteByAddresses — coordinate-only POST without architectural redesign
+- [Phase 03-ai-consolidation-code-quality]: jest-environment node directive added to compare-rides.route.test.ts — fixes uncrypto ESM issue in jsdom environment
+- [Phase 03-ai-consolidation-code-quality]: compare-rides-route.test.ts migrated from compareRidesByAddresses to compareRidesByCoordinates mock — matches only active code path after FEAT-02
 
 ### Pending Todos
 
@@ -101,6 +105,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T21:20:58.119Z
-Stopped at: Completed 03-02-PLAN.md — AI SDK consolidation (Anthropic to OpenAI)
+Last session: 2026-03-10T21:25:50.281Z
+Stopped at: Completed 03-03-PLAN.md — remove legacy API request format (FEAT-02)
 Resume file: None
