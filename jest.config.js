@@ -7,7 +7,7 @@ const createJestConfig = nextJest({
 
 // Add any custom config to be passed to Jest
 const customJestConfig = {
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  setupFilesAfterSetup: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
@@ -15,8 +15,18 @@ const customJestConfig = {
   // Handle ESM modules from next-auth and related packages
   transformIgnorePatterns: ['/node_modules/(?!(next-auth|@auth|@panva)/)'],
   // Exclude Playwright e2e tests from Jest
-  testPathIgnorePatterns: ['/node_modules/', '/e2e/'],
-  modulePathIgnorePatterns: ['<rootDir>/.next/'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/e2e/',
+    '/.next/',
+    '/playwright-report/',
+    '/test-results/',
+  ],
+  modulePathIgnorePatterns: [
+    '<rootDir>/.next/',
+    '<rootDir>/playwright-report/',
+    '<rootDir>/test-results/',
+  ],
   collectCoverageFrom: [
     'app/api/**/*.{ts,tsx}',
     'lib/services/**/*.{ts,tsx}',

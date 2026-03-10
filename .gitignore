@@ -53,3 +53,4 @@ CONTINUITY.md
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+.env*.local
