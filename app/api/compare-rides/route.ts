@@ -19,6 +19,7 @@ import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { auth } from '@/auth'
 import { generateRecommendations } from '@/lib/services/recommendations'
 import { enhanceWithAI } from '@/lib/services/ai-insights'
+import { evaluateAndCreateNotifications } from '@/lib/alert-evaluation'
 import { log, logError } from '@/lib/monitoring'
 import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 import type {
@@ -329,6 +330,14 @@ async function handlePost(request: NextRequest) {
         destinationAddress: requestData.to.name,
       }
     )
+
+    if (authenticatedUserId && comparisons.routeId) {
+      evaluateAndCreateNotifications(
+        comparisons.routeId,
+        authenticatedUserId,
+        comparisons.results
+      ).catch(() => {})
+    }
 
     const aiRecommendations = await resolveAiRecommendations(
       comparisons.routeId,
