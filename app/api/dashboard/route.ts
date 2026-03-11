@@ -60,7 +60,8 @@ async function handleGet(request: NextRequest) {
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-      const [savingsActions, comparisonCount, alertsSet, surgeInsightsRaw] = await Promise.all([
+      const [savingsActions, comparisonCount, alertsSet, unreadAlertCount, surgeInsightsRaw] =
+        await Promise.all([
         // Savings from followed recommendations
         process.env.DATABASE_URL
           ? prisma.recommendationAction
@@ -93,6 +94,16 @@ async function handleGet(request: NextRequest) {
                 where: {
                   userId,
                   isActive: true,
+                },
+              })
+              .catch(() => 0)
+          : Promise.resolve(0),
+        process.env.DATABASE_URL
+          ? prisma.alertNotification
+              .count({
+                where: {
+                  userId,
+                  isRead: false,
                 },
               })
               .catch(() => 0)
@@ -135,6 +146,7 @@ async function handleGet(request: NextRequest) {
             comparisonCount,
             recsFollowed: savingsActions.length,
             alertsSet,
+            unreadAlertCount,
           },
           surgeInsights: surgeInsightsRaw,
         },
