@@ -188,6 +188,24 @@ model PriceAlert {
   triggerCount   Int         @default(0)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  notifications  AlertNotification[]
+}
+
+model AlertNotification {
+  id             String      @id @default(cuid())
+  alert          PriceAlert  @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  alertId        String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  routeId        String
+  service        ServiceType
+  triggeredPrice Float
+  targetPrice    Float
+  isRead         Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+
+  @@index([userId, isRead, createdAt])
+  @@index([alertId])
 }
 
 model RideHistory {
@@ -227,6 +245,7 @@ model User {
   // App-specific relations
   savedRoutes           SavedRoute[]
   priceAlerts           PriceAlert[]
+  alertNotifications    AlertNotification[]
   rideHistories         RideHistory[]
   searchLogs            SearchLog[]
   recommendations       Recommendation[]
