@@ -4,6 +4,7 @@ import { compareRidesByAddresses, compareRidesByCoordinates } from '@/lib/servic
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { auth } from '@/auth'
 import { verifyRecaptchaToken } from '@/lib/recaptcha'
+import { evaluateAndCreateNotifications } from '@/lib/alert-evaluation'
 
 class MockHeaders {
   private readonly values = new Map<string, string>()
@@ -123,6 +124,10 @@ jest.mock('@/lib/services/ai-insights', () => ({
   enhanceWithAI: jest.fn(async recommendations => recommendations),
 }))
 
+jest.mock('@/lib/alert-evaluation', () => ({
+  evaluateAndCreateNotifications: jest.fn(async () => undefined),
+}))
+
 const mockCompareRidesByAddresses = compareRidesByAddresses as jest.MockedFunction<
   typeof compareRidesByAddresses
 >
@@ -135,6 +140,9 @@ const mockFindPrecomputedRoute = findPrecomputedRouteByAddresses as jest.MockedF
 const mockAuth = auth as unknown as jest.Mock
 const mockVerifyRecaptchaToken = verifyRecaptchaToken as jest.MockedFunction<
   typeof verifyRecaptchaToken
+>
+const mockEvaluateAndCreateNotifications = evaluateAndCreateNotifications as jest.MockedFunction<
+  typeof evaluateAndCreateNotifications
 >
 
 let GET: (request: MockRequest) => Promise<MockResponse>
@@ -190,6 +198,7 @@ describe('/api/compare-rides route', () => {
     mockFindPrecomputedRoute.mockReturnValue(undefined)
     mockCompareRidesByAddresses.mockResolvedValue(comparisonFixture)
     mockCompareRidesByCoordinates.mockResolvedValue(comparisonFixture)
+    mockEvaluateAndCreateNotifications.mockResolvedValue(undefined)
   })
 
   afterAll(() => {

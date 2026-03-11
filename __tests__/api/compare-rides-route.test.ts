@@ -7,6 +7,7 @@ import { compareRidesByCoordinates, CompareServiceError } from '@/lib/services/r
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { generateRecommendations } from '@/lib/services/recommendations'
 import { enhanceWithAI } from '@/lib/services/ai-insights'
+import { evaluateAndCreateNotifications } from '@/lib/alert-evaluation'
 
 jest.mock('@/lib/services/ride-comparison', () => ({
   ...jest.requireActual('@/lib/services/ride-comparison'),
@@ -25,6 +26,10 @@ jest.mock('@/lib/services/ai-insights', () => ({
   enhanceWithAI: jest.fn(),
 }))
 
+jest.mock('@/lib/alert-evaluation', () => ({
+  evaluateAndCreateNotifications: jest.fn().mockResolvedValue(undefined),
+}))
+
 const mockAuth = auth as jest.MockedFunction<typeof auth>
 const mockCompareRides = compareRidesByCoordinates as jest.MockedFunction<
   typeof compareRidesByCoordinates
@@ -36,6 +41,9 @@ const mockGenerateRecommendations = generateRecommendations as jest.MockedFuncti
   typeof generateRecommendations
 >
 const mockEnhanceWithAI = enhanceWithAI as jest.MockedFunction<typeof enhanceWithAI>
+const mockEvaluateAndCreateNotifications = evaluateAndCreateNotifications as jest.MockedFunction<
+  typeof evaluateAndCreateNotifications
+>
 
 const coordinateBody = {
   from: { name: '123 Main St', lat: '37.7749', lng: '-122.4194' },
@@ -64,6 +72,7 @@ describe('compare-rides route', () => {
     mockFindPrecomputedRoute.mockReturnValue(undefined)
     mockGenerateRecommendations.mockResolvedValue({ recommendations: [] } as never)
     mockEnhanceWithAI.mockResolvedValue([])
+    mockEvaluateAndCreateNotifications.mockResolvedValue(undefined)
   })
 
   afterAll(() => {

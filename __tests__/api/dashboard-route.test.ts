@@ -16,6 +16,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {
     savedRoute: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
     recommendationAction: {
       findMany: jest.fn(),
@@ -24,6 +25,9 @@ jest.mock('@/lib/prisma', () => ({
       count: jest.fn(),
     },
     priceAlert: {
+      count: jest.fn(),
+    },
+    alertNotification: {
       count: jest.fn(),
     },
     routeInsights: {
@@ -106,6 +110,38 @@ describe('dashboard route', () => {
     await expect(response.json()).resolves.toMatchObject({
       priceHistory: [{ final_price: 18 }],
       hourlyAverages: [{ hour: 9, avg: 20 }],
+    })
+  })
+
+  it('includes unread alert count in savings responses', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-4' } } as never)
+    ;(prisma.recommendationAction.findMany as jest.Mock).mockResolvedValue([
+      { estimatedSavings: 4.5 },
+      { estimatedSavings: 2 },
+    ])
+    ;(prisma.searchLog.count as jest.Mock).mockResolvedValue(12)
+    ;(prisma.priceAlert.count as jest.Mock).mockResolvedValue(3)
+    ;(prisma.alertNotification.count as jest.Mock).mockResolvedValue(2)
+    ;(prisma.savedRoute.findFirst as jest.Mock).mockResolvedValue({ routeId: 'route-1' })
+    ;(prisma.routeInsights.findFirst as jest.Mock).mockResolvedValue({
+      surgeProbabilityByHour: { '8': 0.2, '17': 0.6 },
+    })
+
+    const response = await GET(createRequest('?savings=true', '10.0.1.5'))
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      savings: {
+        totalSavings: 6.5,
+        comparisonCount: 12,
+        recsFollowed: 2,
+        alertsSet: 3,
+        unreadAlertCount: 2,
+      },
+      surgeInsights: [
+        { hour: 17, probability: 0.6 },
+        { hour: 8, probability: 0.2 },
+      ],
     })
   })
 })
