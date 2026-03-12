@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { API_CONFIG } from '@/lib/constants'
 import type { Coordinates } from '@/types'
 
 export interface UserLocationResult {
@@ -43,10 +44,10 @@ export function useUserLocation(): UseUserLocationReturn {
 
             // Reverse geocode the coordinates
             const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+              `${API_CONFIG.NOMINATIM_REVERSE_URL}?lat=${latitude}&lon=${longitude}&format=json`,
               {
                 headers: {
-                  'User-Agent': 'RideCompareApp/1.0',
+                  'User-Agent': API_CONFIG.USER_AGENT,
                 },
               }
             )

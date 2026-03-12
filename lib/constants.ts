@@ -1,4 +1,4 @@
-import type { CommonPlaces } from '@/types'
+import type { CommonPlaces, ServiceType } from '@/types'
 
 // Common places for faster autocomplete
 export const COMMON_PLACES: CommonPlaces = {
@@ -243,9 +243,12 @@ export const COMMON_PLACES: CommonPlaces = {
   },
 }
 
+export const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
+
 // API endpoints and configuration
 export const API_CONFIG = {
   NOMINATIM_BASE_URL: 'https://nominatim.openstreetmap.org/search',
+  NOMINATIM_REVERSE_URL: 'https://nominatim.openstreetmap.org/reverse',
   OSRM_BASE_URL: 'https://router.project-osrm.org/route/v1/driving',
   USER_AGENT: 'RideCompareApp/1.0',
   SEARCH_LIMIT: 5,

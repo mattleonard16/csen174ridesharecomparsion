@@ -34,6 +34,8 @@ export {
   mapServiceToEnum,
 } from './database-logging'
 
+export { evaluateAndCreateNotifications } from './alert-evaluation'
+
 // ============================================================================
 // Service Mappings (canonical source)
 // ============================================================================

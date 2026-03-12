@@ -3,14 +3,15 @@
 import { NextRequest } from 'next/server'
 import { POST } from '@/app/api/compare-rides/route'
 import { auth } from '@/auth'
-import { compareRidesByAddresses, CompareServiceError } from '@/lib/services/ride-comparison'
+import { compareRidesByCoordinates, CompareServiceError } from '@/lib/services/ride-comparison'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { generateRecommendations } from '@/lib/services/recommendations'
 import { enhanceWithAI } from '@/lib/services/ai-insights'
+import { evaluateAndCreateNotifications } from '@/lib/alert-evaluation'
 
 jest.mock('@/lib/services/ride-comparison', () => ({
   ...jest.requireActual('@/lib/services/ride-comparison'),
-  compareRidesByAddresses: jest.fn(),
+  compareRidesByCoordinates: jest.fn(),
 }))
 
 jest.mock('@/lib/popular-routes-data', () => ({
@@ -25,9 +26,13 @@ jest.mock('@/lib/services/ai-insights', () => ({
   enhanceWithAI: jest.fn(),
 }))
 
+jest.mock('@/lib/alert-evaluation', () => ({
+  evaluateAndCreateNotifications: jest.fn().mockResolvedValue(undefined),
+}))
+
 const mockAuth = auth as jest.MockedFunction<typeof auth>
-const mockCompareRides = compareRidesByAddresses as jest.MockedFunction<
-  typeof compareRidesByAddresses
+const mockCompareRides = compareRidesByCoordinates as jest.MockedFunction<
+  typeof compareRidesByCoordinates
 >
 const mockFindPrecomputedRoute = findPrecomputedRouteByAddresses as jest.MockedFunction<
   typeof findPrecomputedRouteByAddresses
@@ -36,6 +41,14 @@ const mockGenerateRecommendations = generateRecommendations as jest.MockedFuncti
   typeof generateRecommendations
 >
 const mockEnhanceWithAI = enhanceWithAI as jest.MockedFunction<typeof enhanceWithAI>
+const mockEvaluateAndCreateNotifications = evaluateAndCreateNotifications as jest.MockedFunction<
+  typeof evaluateAndCreateNotifications
+>
+
+const coordinateBody = {
+  from: { name: '123 Main St', lat: '37.7749', lng: '-122.4194' },
+  to: { name: '456 Market St', lat: '37.7879', lng: '-122.4074' },
+}
 
 function createRequest(body: object, ip: string) {
   return new NextRequest('http://localhost:3000/api/compare-rides', {
@@ -59,6 +72,7 @@ describe('compare-rides route', () => {
     mockFindPrecomputedRoute.mockReturnValue(undefined)
     mockGenerateRecommendations.mockResolvedValue({ recommendations: [] } as never)
     mockEnhanceWithAI.mockResolvedValue([])
+    mockEvaluateAndCreateNotifications.mockResolvedValue(undefined)
   })
 
   afterAll(() => {
@@ -68,15 +82,7 @@ describe('compare-rides route', () => {
   it('requires a security token in production for non-precomputed routes', async () => {
     env.NODE_ENV = 'production'
 
-    const response = await POST(
-      createRequest(
-        {
-          pickup: '123 Main St',
-          destination: '456 Market St',
-        },
-        '10.0.0.1'
-      )
-    )
+    const response = await POST(createRequest(coordinateBody, '10.0.0.1'))
 
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toMatchObject({
@@ -105,15 +111,7 @@ describe('compare-rides route', () => {
       routeWarning: undefined,
     } as never)
 
-    const response = await POST(
-      createRequest(
-        {
-          pickup: '123 Main St',
-          destination: '456 Market St',
-        },
-        '10.0.0.2'
-      )
-    )
+    const response = await POST(createRequest(coordinateBody, '10.0.0.2'))
 
     expect(response.status).toBe(200)
     expect(response.headers.get('x-request-id')).toBeTruthy()
@@ -150,15 +148,7 @@ describe('compare-rides route', () => {
         'Prices are based on estimated route metrics because live routing is temporarily unavailable.',
     } as never)
 
-    const response = await POST(
-      createRequest(
-        {
-          pickup: '123 Main St',
-          destination: '456 Market St',
-        },
-        '10.0.0.3'
-      )
-    )
+    const response = await POST(createRequest(coordinateBody, '10.0.0.3'))
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({
@@ -175,8 +165,8 @@ describe('compare-rides route', () => {
     const response = await POST(
       createRequest(
         {
-          pickup: 'bad address',
-          destination: '456 Market St',
+          from: { name: 'bad address', lat: '37.7749', lng: '-122.4194' },
+          to: { name: '456 Market St', lat: '37.7879', lng: '-122.4074' },
         },
         '10.0.0.4'
       )
@@ -199,15 +189,7 @@ describe('compare-rides route', () => {
       })
     )
 
-    const response = await POST(
-      createRequest(
-        {
-          pickup: '123 Main St',
-          destination: '456 Market St',
-        },
-        '10.0.0.5'
-      )
-    )
+    const response = await POST(createRequest(coordinateBody, '10.0.0.5'))
 
     expect(response.status).toBe(504)
     await expect(response.json()).resolves.toMatchObject({
@@ -223,15 +205,7 @@ describe('compare-rides route', () => {
       })
     )
 
-    const response = await POST(
-      createRequest(
-        {
-          pickup: '123 Main St',
-          destination: '456 Market St',
-        },
-        '10.0.0.6'
-      )
-    )
+    const response = await POST(createRequest(coordinateBody, '10.0.0.6'))
 
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toMatchObject({

@@ -2,45 +2,20 @@
  * AI Insights Service
  *
  * Transforms structured recommendation data into natural language
- * using Claude Haiku. Falls back to template strings if API is unavailable.
+ * using OpenAI gpt-4o-mini. Falls back to template strings if API is unavailable.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import type { AIRecommendation } from '@/types'
-
-// Daily quota tracking (resets at midnight UTC)
-let dailyCallCount = 0
-let lastResetDate = new Date().toISOString().split('T')[0]
+import { getCached, incrementQuotaCounter } from '@/lib/cache/redis-cache'
 
 const AI_DAILY_QUOTA = parseInt(process.env.AI_DAILY_QUOTA ?? '500', 10) || 500
-const AI_RESPONSE_CACHE = new Map<string, { value: string[]; expiresAt: number }>()
-const AI_CACHE_TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
-const MAX_AI_CACHE_SIZE = 200
+const AI_CACHE_TTL_SECONDS = 7200 // 2 hours
 
-function cleanupExpiredEntries<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
-  const now = Date.now()
-  for (const [key, entry] of Array.from(cache.entries())) {
-    if (entry.expiresAt <= now) cache.delete(key)
-  }
-}
-
-function getAnthropicClient(): Anthropic | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+function getOpenAIClient(): OpenAI | null {
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return null
-  return new Anthropic({ apiKey })
-}
-
-function resetDailyQuotaIfNeeded(): void {
-  const today = new Date().toISOString().split('T')[0]
-  if (today !== lastResetDate) {
-    dailyCallCount = 0
-    lastResetDate = today
-  }
-}
-
-function isWithinQuota(): boolean {
-  resetDailyQuotaIfNeeded()
-  return dailyCallCount < AI_DAILY_QUOTA
+  return new OpenAI({ apiKey })
 }
 
 /**
@@ -51,7 +26,7 @@ function buildCacheKey(recommendations: AIRecommendation[]): string {
 }
 
 /**
- * Build a prompt for Claude to generate natural language insights.
+ * Build a prompt for OpenAI to generate natural language insights.
  * Privacy: only sends aggregated stats, no PII or raw addresses.
  */
 function buildPrompt(recommendations: AIRecommendation[]): string {
@@ -121,7 +96,7 @@ function capitalize(s: string): string {
 
 /**
  * Enhance recommendations with AI-generated natural language messages.
- * Falls back to templates if Claude API is unavailable or quota exceeded.
+ * Falls back to templates if OpenAI API is unavailable or quota exceeded.
  *
  * @returns Updated recommendations with improved messages
  */
@@ -130,76 +105,47 @@ export async function enhanceWithAI(
 ): Promise<AIRecommendation[]> {
   if (recommendations.length === 0) return recommendations
 
-  // Check cache first
-  const cacheKey = buildCacheKey(recommendations)
-  const cached = AI_RESPONSE_CACHE.get(cacheKey)
-  if (cached && cached.expiresAt > Date.now()) {
-    return recommendations.map((rec, i) => ({
-      ...rec,
-      message: cached.value[i] ?? rec.message,
-    }))
-  }
+  const aiCacheKey = `ai:${buildCacheKey(recommendations)}`
 
-  // Try AI enhancement
-  const client = getAnthropicClient()
-  if (client && isWithinQuota()) {
-    try {
-      const prompt = buildPrompt(recommendations)
-      dailyCallCount++
+  const { value: messages } = await getCached<string[]>(
+    aiCacheKey,
+    AI_CACHE_TTL_SECONDS,
+    async () => {
+      // Check quota using atomic Redis counter
+      const quotaKey = `quota:ai:${new Date().toISOString().split('T')[0]}`
+      const currentCount = await incrementQuotaCounter(quotaKey)
+      const withinQuota = currentCount <= AI_DAILY_QUOTA
 
-      const response = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 150 * recommendations.length,
-        temperature: 0.3,
-        messages: [{ role: 'user', content: prompt }],
-      })
-
-      const text = response.content[0].type === 'text' ? response.content[0].text : ''
-
-      // Parse numbered responses
-      const lines = text
-        .split('\n')
-        .map(l => l.replace(/^\d+\.\s*/, '').trim())
-        .filter(l => l.length > 0)
-
-      if (lines.length >= recommendations.length) {
-        // Cache AI responses
-        cleanupExpiredEntries(AI_RESPONSE_CACHE)
-        if (AI_RESPONSE_CACHE.size >= MAX_AI_CACHE_SIZE) {
-          const firstKey = AI_RESPONSE_CACHE.keys().next().value
-          if (firstKey) AI_RESPONSE_CACHE.delete(firstKey)
+      const client = getOpenAIClient()
+      if (client && withinQuota) {
+        try {
+          const prompt = buildPrompt(recommendations)
+          const response = await client.chat.completions.create({
+            model: 'gpt-4o-mini',
+            max_tokens: 150 * recommendations.length,
+            temperature: 0.3,
+            messages: [{ role: 'user', content: prompt }],
+          })
+          const text = response.choices[0]?.message?.content ?? ''
+          const lines = text
+            .split('\n')
+            .map(l => l.replace(/^\d+\.\s*/, '').trim())
+            .filter(l => l.length > 0)
+          if (lines.length >= recommendations.length) {
+            return lines
+          }
+        } catch {
+          // Swallow — fall through to template fallback below
         }
-        AI_RESPONSE_CACHE.set(cacheKey, {
-          value: lines,
-          expiresAt: Date.now() + AI_CACHE_TTL_MS,
-        })
-
-        return recommendations.map((rec, i) => ({
-          ...rec,
-          message: lines[i] ?? rec.message,
-        }))
       }
-    } catch (error) {
-      console.warn('AI enhancement failed, falling back to templates:', error)
+
+      // Template fallback (no AI or quota exceeded or parse failure)
+      return generateTemplateMessages(recommendations)
     }
-  }
-
-  // Fallback to templates
-  const templateMessages = generateTemplateMessages(recommendations)
-
-  // Cache template responses too (shorter TTL)
-  cleanupExpiredEntries(AI_RESPONSE_CACHE)
-  if (AI_RESPONSE_CACHE.size >= MAX_AI_CACHE_SIZE) {
-    const firstKey = AI_RESPONSE_CACHE.keys().next().value
-    if (firstKey) AI_RESPONSE_CACHE.delete(firstKey)
-  }
-  AI_RESPONSE_CACHE.set(cacheKey, {
-    value: templateMessages,
-    expiresAt: Date.now() + AI_CACHE_TTL_MS / 2,
-  })
+  )
 
   return recommendations.map((rec, i) => ({
     ...rec,
-    message: templateMessages[i] ?? rec.message,
+    message: messages[i] ?? rec.message,
   }))
 }

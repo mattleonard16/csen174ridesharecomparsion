@@ -5,11 +5,58 @@ import {
 } from '@/lib/services/ride-comparison'
 import type { Coordinates } from '@/types'
 
+// Cache mock: maintains an in-process Map that simulates getCached L1 behaviour.
+// The factory runs at module evaluation time — the Map must live inside the factory.
+// Test code clears the store via the exported clearCacheNamespace mock.
+jest.mock('@/lib/cache/redis-cache', () => {
+  const store = new Map<string, unknown>()
+
+  const getCachedMock = jest.fn(
+    async (key: string, _ttl: number, compute: () => Promise<unknown>) => {
+      if (store.has(key)) {
+        return { value: store.get(key), cacheHit: true }
+      }
+      const value = await compute()
+      store.set(key, value)
+      return { value, cacheHit: false }
+    }
+  )
+
+  const clearCacheNamespaceMock = jest.fn((namespace: string) => {
+    for (const key of Array.from(store.keys())) {
+      if (key.startsWith(`${namespace}:`)) {
+        store.delete(key)
+      }
+    }
+  })
+
+  // Expose the store so tests can pre-populate it (for L2 hit simulation)
+  // and clear it in beforeEach.
+  const clearAll = () => store.clear()
+  const prePopulate = (key: string, value: unknown) => store.set(key, value)
+
+  return { getCached: getCachedMock, clearCacheNamespace: clearCacheNamespaceMock, clearAll, prePopulate }
+})
+
 jest.mock('@/lib/database', () => ({
   findOrCreateRoute: jest.fn(async () => 'mock-route-id'),
   logPriceSnapshot: jest.fn(async () => undefined),
   logSearch: jest.fn(async () => undefined),
 }))
+
+jest.mock('@/lib/monitoring', () => ({
+  log: jest.fn(),
+  logError: jest.fn(),
+  trackPerformance: jest.fn(),
+}))
+
+// Helper to access the cache mock's internal controls
+function getCacheMockControls() {
+  return jest.requireMock('@/lib/cache/redis-cache') as {
+    clearAll: () => void
+    prePopulate: (key: string, value: unknown) => void
+  }
+}
 
 const mockFetch = jest.fn()
 const originalFetch = global.fetch
@@ -43,6 +90,7 @@ describe('ride-comparison service', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockFetch.mockReset()
+    getCacheMockControls().clearAll()
     resetRideComparisonCaches()
     jest.useFakeTimers()
   })
@@ -346,6 +394,7 @@ describe('ride-comparison service', () => {
       mockFetch.mockClear()
       await compareRidesByAddresses(uniqueAddress1, uniqueAddress2)
       const callsAfterSecond = mockFetch.mock.calls.length
+      // All caches are warm — no fetch calls should be made
       expect(callsAfterSecond).toBe(0)
     })
 
@@ -599,6 +648,27 @@ describe('ride-comparison service', () => {
       expect(result.results.uber!.driversNearby).toBeGreaterThanOrEqual(1)
       expect(result.results.lyft!.driversNearby).toBeGreaterThanOrEqual(1)
       expect(result.results.taxi!.driversNearby).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('getCached L2 hit path (geocode)', () => {
+    it('returns cached coordinates without calling Nominatim when getCached has a cache hit', async () => {
+      // Pre-populate the mock cache with geocode entries for both addresses,
+      // simulating a warm Redis L2 cache (cacheHit: true path).
+      const cachedCoords: Coordinates = [-122.4194, 37.7749]
+      getCacheMockControls().prePopulate('geocode:sf downtown', cachedCoords)
+      getCacheMockControls().prePopulate('geocode:oak downtown', cachedCoords)
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => MOCK_OSRM_RESPONSE,
+      })
+
+      await compareRidesByAddresses('SF Downtown', 'OAK Downtown', ['uber'])
+
+      // Nominatim was not called — geocode results came from the cache (cacheHit: true)
+      const nominatimCalls = mockFetch.mock.calls.filter(call => call[0].includes('nominatim'))
+      expect(nominatimCalls.length).toBe(0)
     })
   })
 })

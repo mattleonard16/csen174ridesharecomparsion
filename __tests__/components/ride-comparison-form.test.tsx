@@ -56,12 +56,14 @@ jest.mock('@/components/location-input', () => ({
     label,
     value,
     onChange,
+    onSelect,
     headerAction,
   }: {
     id: string
     label: string
     value: string
     onChange: (value: string) => void
+    onSelect?: (suggestion: { display_name: string; lat: string; lon: string }) => void
     headerAction?: ReactNode
   }) => (
     <div>
@@ -71,7 +73,15 @@ jest.mock('@/components/location-input', () => ({
         aria-label={label}
         value={value}
         required
-        onChange={e => onChange(e.target.value)}
+        onChange={e => {
+          onChange(e.target.value)
+          // Simulate coordinate selection for test scenarios
+          onSelect?.({
+            display_name: e.target.value,
+            lat: '37.7749',
+            lon: '-122.4194',
+          })
+        }}
       />
       {headerAction}
     </div>
@@ -93,6 +103,15 @@ jest.mock('@/lib/hooks/useUserLocation', () => ({
     error: null,
   }),
 }))
+
+// Provide stub precomputed data so selectedRoute auto-submits include coordinates
+jest.mock('@/lib/popular-routes-data', () => ({
+  findPrecomputedRouteByAddresses: jest.fn().mockReturnValue({
+    pickup: { coordinates: [-122.4194, 37.7749] },
+    destination: { coordinates: [-122.2711, 37.8044] },
+  }),
+}))
+
 
 describe('RideComparisonForm', () => {
   beforeEach(() => {

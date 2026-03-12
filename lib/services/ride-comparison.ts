@@ -1,4 +1,4 @@
-import { API_CONFIG } from '@/lib/constants'
+import { API_CONFIG, DEFAULT_SERVICES } from '@/lib/constants'
 import { findOrCreateRoute, logPriceSnapshot, logSearch } from '@/lib/database'
 import { getAirportByCode, parseAirportCode } from '@/lib/airports'
 import { haversineDistanceKm } from '@/lib/geo'
@@ -6,6 +6,7 @@ import { log } from '@/lib/monitoring'
 import { getBestTimeRecommendations, getTimeBasedMultiplier, pricingEngine } from '@/lib/pricing'
 import { sanitizeString } from '@/lib/validation'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
+import { getCached, clearCacheNamespace } from '@/lib/cache/redis-cache'
 import type {
   ComparisonResults,
   Coordinates,
@@ -19,12 +20,6 @@ import type {
   SurgeInfo,
 } from '@/types'
 
-const GEOCODE_CACHE = new Map<string, { value: Coordinates; expiresAt: number }>()
-const ROUTE_CACHE = new Map<string, { value: RouteMetrics; expiresAt: number }>()
-const COMPARISON_CACHE = new Map<string, { value: CachedComparisonCore; expiresAt: number }>()
-
-const MAX_CACHE_SIZE = 1000
-const CACHE_CLEANUP_THRESHOLD = 0.8
 const COMPARISON_CACHE_VERSION = 'v2'
 const PRECOMPUTED_COMPARISON_CACHE_TTL_MS = 5 * 60 * 1000
 const DYNAMIC_COMPARISON_CACHE_TTL_MS = 45 * 1000
@@ -94,9 +89,9 @@ export function isCompareServiceError(error: unknown): error is CompareServiceEr
 }
 
 export function resetRideComparisonCaches(): void {
-  GEOCODE_CACHE.clear()
-  ROUTE_CACHE.clear()
-  COMPARISON_CACHE.clear()
+  clearCacheNamespace('geocode')
+  clearCacheNamespace('route')
+  clearCacheNamespace('comparison')
 }
 
 interface ComparisonCoreComputation {
@@ -154,8 +149,6 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   waymo: 'Waymo One',
 }
 
-const DEFAULT_SERVICES: ServiceType[] = ['uber', 'lyft', 'taxi', 'waymo']
-
 const WAYMO_SERVICE_AREAS = {
   sanFrancisco: {
     minLat: 37.7,
@@ -171,28 +164,6 @@ const WAYMO_SERVICE_AREAS = {
   },
 }
 
-function cleanupCache<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
-  const now = Date.now()
-  const keysToDelete: string[] = []
-  cache.forEach((entry, key) => {
-    if (entry.expiresAt <= now) {
-      keysToDelete.push(key)
-    }
-  })
-  keysToDelete.forEach(key => cache.delete(key))
-}
-
-function maintainCache<T>(cache: Map<string, { value: T; expiresAt: number }>): void {
-  cleanupCache(cache)
-
-  if (cache.size > MAX_CACHE_SIZE * CACHE_CLEANUP_THRESHOLD) {
-    const entriesToRemove = cache.size - Math.floor(MAX_CACHE_SIZE * 0.5)
-    const keys = Array.from(cache.keys())
-    for (let i = 0; i < entriesToRemove && i < keys.length; i++) {
-      cache.delete(keys[i])
-    }
-  }
-}
 
 function kmToMiles(km: number): number {
   return km * 0.621371
@@ -219,7 +190,8 @@ function createComparisonCacheKey(
   pickup: Coordinates,
   destination: Coordinates,
   services: ServiceType[],
-  timestamp: Date
+  timestamp: Date,
+  routeAccuracy: RouteAccuracy
 ): string {
   const pickupKey = `${formatCoordinateValue(pickup[0])},${formatCoordinateValue(pickup[1])}`
   const destinationKey = `${formatCoordinateValue(destination[0])},${formatCoordinateValue(destination[1])}`
@@ -231,6 +203,7 @@ function createComparisonCacheKey(
     destinationKey,
     services.join(','),
     getTimeBucket(timestamp),
+    routeAccuracy,
   ].join(':')
 }
 
@@ -270,72 +243,65 @@ async function getComparisonCore(
   routeAccuracy: RouteAccuracy,
   routeWarning?: string
 ): Promise<CachedComparisonCore> {
-  const cacheKey = createComparisonCacheKey(pickup, destination, services, timestamp)
-  const cached = COMPARISON_CACHE.get(cacheKey)
-  const now = Date.now()
+  const cacheKey = createComparisonCacheKey(pickup, destination, services, timestamp, routeAccuracy)
+  const ttlSeconds = isPrecomputedRoute
+    ? PRECOMPUTED_COMPARISON_CACHE_TTL_MS / 1000
+    : DYNAMIC_COMPARISON_CACHE_TTL_MS / 1000
 
-  if (cached && cached.expiresAt > now) {
-    return cached.value
-  }
+  const { value } = await getCached<CachedComparisonCore>(cacheKey, ttlSeconds, async () => {
+    const resultsEntries = services.map(service => {
+      const computation = pricingEngine.calculateFare({
+        service,
+        pickupCoords: pickup,
+        destCoords: destination,
+        distanceKm: metrics.distanceKm,
+        durationMin: metrics.durationMin,
+        timestamp,
+        osrmDurationSec: metrics.osrmDurationSec,
+        expectedDurationSec: metrics.durationMin * 60,
+      })
 
-  const resultsEntries = services.map(service => {
-    const computation = pricingEngine.calculateFare({
-      service,
-      pickupCoords: pickup,
-      destCoords: destination,
-      distanceKm: metrics.distanceKm,
-      durationMin: metrics.durationMin,
-      timestamp,
-      osrmDurationSec: metrics.osrmDurationSec,
-      expectedDurationSec: metrics.durationMin * 60,
+      return [service, buildRideResult(service, computation, metrics), computation] as const
     })
 
-    return [service, buildRideResult(service, computation, metrics), computation] as const
-  })
+    const comparisonResults = Object.fromEntries(
+      resultsEntries.map(([service, result]) => [service, result])
+    ) as ComparisonResults
 
-  const comparisonResults = Object.fromEntries(
-    resultsEntries.map(([service, result]) => [service, result])
-  ) as ComparisonResults
+    const { multiplier, surgeReason } = getTimeBasedMultiplier(pickup, destination, timestamp)
 
-  const { multiplier, surgeReason } = getTimeBasedMultiplier(pickup, destination, timestamp)
-
-  const core: CachedComparisonCore = {
-    metrics,
-    results: comparisonResults,
-    surgeInfo: {
-      multiplier,
-      reason: surgeReason,
-      isActive: multiplier > 1.05,
-    },
-    timeRecommendations: getBestTimeRecommendations(),
-    pickup,
-    destination,
-    insights: generateRecommendation(comparisonResults),
-    routeAccuracy,
-    routeWarning,
-    priceSnapshots: resultsEntries.map(([service, _, computation]) => ({
-      service,
-      finalFare: computation.breakdown.finalFare,
-      surgeMultiplier: computation.breakdown.surgeMultiplier,
-      waitMinutes: deriveWaitMinutes(
+    const core: CachedComparisonCore = {
+      metrics,
+      results: comparisonResults,
+      surgeInfo: {
+        multiplier,
+        reason: surgeReason,
+        isActive: multiplier > 1.05,
+      },
+      timeRecommendations: getBestTimeRecommendations(),
+      pickup,
+      destination,
+      insights: generateRecommendation(comparisonResults),
+      routeAccuracy,
+      routeWarning,
+      priceSnapshots: resultsEntries.map(([service, _, computation]) => ({
         service,
-        computation.breakdown.surgeMultiplier,
-        metrics.durationMin
-      ),
-      weather: computation.surgeReason,
-      trafficLevel: classifyTraffic(computation.breakdown.trafficMultiplier),
-    })),
-  }
+        finalFare: computation.breakdown.finalFare,
+        surgeMultiplier: computation.breakdown.surgeMultiplier,
+        waitMinutes: deriveWaitMinutes(
+          service,
+          computation.breakdown.surgeMultiplier,
+          metrics.durationMin
+        ),
+        weather: computation.surgeReason,
+        trafficLevel: classifyTraffic(computation.breakdown.trafficMultiplier),
+      })),
+    }
 
-  maintainCache(COMPARISON_CACHE)
-  COMPARISON_CACHE.set(cacheKey, {
-    value: core,
-    expiresAt:
-      now +
-      (isPrecomputedRoute ? PRECOMPUTED_COMPARISON_CACHE_TTL_MS : DYNAMIC_COMPARISON_CACHE_TTL_MS),
+    return core
   })
 
-  return core
+  return value
 }
 
 async function persistComparison(
@@ -526,61 +492,55 @@ function classifyTraffic(
 }
 
 async function geocodeWithCache(address: string): Promise<Coordinates> {
-  const cacheKey = address.toLowerCase()
-  const cached = GEOCODE_CACHE.get(cacheKey)
-  const now = Date.now()
-
-  if (cached && cached.expiresAt > now) {
-    return cached.value
-  }
+  const normalizedKey = address.toLowerCase()
+  const GEOCODE_TTL_SECONDS = API_CONFIG.CACHE_TTL / 1000
 
   const airportCode = parseAirportCode(address)
   if (airportCode) {
     const airport = getAirportByCode(airportCode)
     if (airport) {
-      maintainCache(GEOCODE_CACHE)
-      GEOCODE_CACHE.set(cacheKey, {
-        value: airport.coordinates,
-        expiresAt: now + API_CONFIG.CACHE_TTL,
-      })
-      return airport.coordinates
+      const { value } = await getCached<Coordinates>(
+        `geocode:${normalizedKey}`,
+        GEOCODE_TTL_SECONDS,
+        async () => airport.coordinates
+      )
+      return value
     }
   }
 
-  const url = `${API_CONFIG.NOMINATIM_BASE_URL}?q=${encodeURIComponent(address)}&format=json&limit=1`
-  const response = await fetchWithPolicy(url, GEOCODE_FETCH_POLICY)
+  const { value: coordinates } = await getCached<Coordinates>(
+    `geocode:${normalizedKey}`,
+    GEOCODE_TTL_SECONDS,
+    async () => {
+      const url = `${API_CONFIG.NOMINATIM_BASE_URL}?q=${encodeURIComponent(address)}&format=json&limit=1`
+      const response = await fetchWithPolicy(url, GEOCODE_FETCH_POLICY)
 
-  if (!response.ok) {
-    throw new CompareServiceError(
-      'GEOCODE_UNAVAILABLE',
-      `Geocoding provider returned ${response.status}`,
-      {
-        provider: 'nominatim',
-        phase: 'geocode',
+      if (!response.ok) {
+        throw new CompareServiceError(
+          'GEOCODE_UNAVAILABLE',
+          `Geocoding provider returned ${response.status}`,
+          {
+            provider: 'nominatim',
+            phase: 'geocode',
+          }
+        )
       }
-    )
-  }
 
-  const data = (await response.json()) as Array<{ lon: string; lat: string }>
-  if (!data.length) {
-    throw new CompareServiceError(
-      'ADDRESS_NOT_FOUND',
-      `Address could not be resolved: ${address}`,
-      {
-        provider: 'nominatim',
-        phase: 'geocode',
+      const data = (await response.json()) as Array<{ lon: string; lat: string }>
+      if (!data.length) {
+        throw new CompareServiceError(
+          'ADDRESS_NOT_FOUND',
+          `Address could not be resolved: ${address}`,
+          {
+            provider: 'nominatim',
+            phase: 'geocode',
+          }
+        )
       }
-    )
-  }
 
-  const lon = parseFloat(data[0].lon) as Longitude
-  const lat = parseFloat(data[0].lat) as Latitude
-  const coordinates: Coordinates = [lon, lat]
-  maintainCache(GEOCODE_CACHE)
-  GEOCODE_CACHE.set(cacheKey, {
-    value: coordinates,
-    expiresAt: now + API_CONFIG.CACHE_TTL,
-  })
+      return [parseFloat(data[0].lon) as Longitude, parseFloat(data[0].lat) as Latitude] as Coordinates
+    }
+  )
 
   return coordinates
 }
@@ -589,51 +549,42 @@ async function getRouteMetrics(
   pickup: Coordinates,
   destination: Coordinates
 ): Promise<RouteMetrics> {
-  const cacheKey = getRouteCacheKey('exact', pickup, destination)
-  const now = Date.now()
-  const cached = ROUTE_CACHE.get(cacheKey)
+  const cacheKey = `route:${getRouteCacheKey('exact', pickup, destination)}`
+  const ROUTE_TTL_SECONDS = API_CONFIG.ROUTE_CACHE_TTL / 1000
 
-  if (cached && cached.expiresAt > now) {
-    return cached.value
-  }
+  const { value } = await getCached<RouteMetrics>(cacheKey, ROUTE_TTL_SECONDS, async () => {
+    const url = `${API_CONFIG.OSRM_BASE_URL}/${pickup[0]},${pickup[1]};${destination[0]},${destination[1]}?overview=false`
+    const response = await fetchWithPolicy(url, ROUTE_FETCH_POLICY)
 
-  const url = `${API_CONFIG.OSRM_BASE_URL}/${pickup[0]},${pickup[1]};${destination[0]},${destination[1]}?overview=false`
-  const response = await fetchWithPolicy(url, ROUTE_FETCH_POLICY)
+    if (!response.ok) {
+      throw new CompareServiceError(
+        'ROUTE_UNAVAILABLE',
+        `Routing provider returned ${response.status}`,
+        {
+          provider: 'osrm',
+          phase: 'route',
+        }
+      )
+    }
 
-  if (!response.ok) {
-    throw new CompareServiceError(
-      'ROUTE_UNAVAILABLE',
-      `Routing provider returned ${response.status}`,
-      {
+    const data: OSRMResponse = await response.json()
+
+    if (data.code !== 'Ok' || !data.routes?.length) {
+      throw new CompareServiceError('ROUTE_UNAVAILABLE', `Routing response invalid: ${data.code}`, {
         provider: 'osrm',
         phase: 'route',
-      }
-    )
-  }
+      })
+    }
 
-  const data: OSRMResponse = await response.json()
-
-  if (data.code !== 'Ok' || !data.routes?.length) {
-    throw new CompareServiceError('ROUTE_UNAVAILABLE', `Routing response invalid: ${data.code}`, {
-      provider: 'osrm',
-      phase: 'route',
-    })
-  }
-
-  const route = data.routes[0]
-  const metrics: RouteMetrics = {
-    distanceKm: route.distance / 1000,
-    durationMin: route.duration / 60,
-    osrmDurationSec: route.duration,
-  }
-
-  maintainCache(ROUTE_CACHE)
-  ROUTE_CACHE.set(cacheKey, {
-    value: metrics,
-    expiresAt: now + API_CONFIG.ROUTE_CACHE_TTL,
+    const route = data.routes[0]
+    return {
+      distanceKm: route.distance / 1000,
+      durationMin: route.duration / 60,
+      osrmDurationSec: route.duration,
+    }
   })
 
-  return metrics
+  return value
 }
 
 async function resolveRouteMetrics(
@@ -800,14 +751,8 @@ function getRouteCacheKey(
 }
 
 function getEstimatedRouteMetrics(pickup: Coordinates, destination: Coordinates): RouteMetrics {
-  const cacheKey = getRouteCacheKey('estimated', pickup, destination)
-  const now = Date.now()
-  const cached = ROUTE_CACHE.get(cacheKey)
-
-  if (cached && cached.expiresAt > now) {
-    return cached.value
-  }
-
+  // Estimated metrics are computed synchronously via haversine — no network call required.
+  // These are cheap to compute, so no caching is needed.
   const straightLineKm = haversineDistanceKm(pickup, destination)
   const roadFactor =
     straightLineKm < 3 ? 1.45 : straightLineKm < 10 ? 1.35 : straightLineKm < 30 ? 1.25 : 1.18
@@ -815,18 +760,10 @@ function getEstimatedRouteMetrics(pickup: Coordinates, destination: Coordinates)
   const averageSpeedKmh = distanceKm < 5 ? 22 : distanceKm < 15 ? 28 : distanceKm < 40 ? 36 : 48
   const durationMin = Math.max(4, Number(((distanceKm / averageSpeedKmh) * 60 + 3).toFixed(1)))
 
-  const metrics: RouteMetrics = {
+  return {
     distanceKm,
     durationMin,
   }
-
-  maintainCache(ROUTE_CACHE)
-  ROUTE_CACHE.set(cacheKey, {
-    value: metrics,
-    expiresAt: now + API_CONFIG.ROUTE_CACHE_TTL,
-  })
-
-  return metrics
 }
 
 async function sleep(ms: number): Promise<void> {

@@ -56,14 +56,7 @@ export interface CoordinateComparisonRequest {
   recaptchaToken?: string
 }
 
-export interface LegacyComparisonRequest {
-  pickup: string
-  destination: string
-  services?: ServiceType[]
-  recaptchaToken?: string
-}
-
-export type ComparisonRequestBody = CoordinateComparisonRequest | LegacyComparisonRequest
+export type ComparisonRequestBody = CoordinateComparisonRequest
 
 // Surge information
 export interface SurgeInfo {

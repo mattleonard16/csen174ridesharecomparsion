@@ -11,6 +11,7 @@ import {
   type RideServiceName,
   type ServiceName,
 } from '@/lib/service-mappings'
+import type { ComparisonResults } from '@/types'
 
 const TrafficLevelEnum = $Enums.TrafficLevel
 const AlertTypeEnum = $Enums.AlertType
@@ -145,7 +146,7 @@ export async function logPriceSnapshot(
 export async function logSearch(
   routeId: string | null,
   userId: string | null,
-  results: any,
+  results: ComparisonResults,
   sessionId?: string
 ): Promise<void> {
   if (!isDatabaseAvailable()) {
@@ -158,7 +159,8 @@ export async function logSearch(
         routeId: routeId || undefined,
         userId: userId || undefined,
         session_id: sessionId,
-        results_shown: results,
+        // Cast to satisfy Prisma's InputJsonValue — ComparisonResults is JSON-serializable
+        results_shown: results as never,
         user_agent: typeof window !== 'undefined' ? window.navigator.userAgent : null,
       },
     })
@@ -178,7 +180,7 @@ export async function logWeatherData(
     precipitation?: number
     windSpeed?: number
     visibility?: number
-    rawData?: any
+    rawData?: unknown
   }
 ): Promise<void> {
   if (!isDatabaseAvailable()) {
@@ -198,7 +200,8 @@ export async function logWeatherData(
         is_severe:
           weatherData.condition.toLowerCase().includes('storm') ||
           weatherData.condition.toLowerCase().includes('severe'),
-        raw_data: weatherData.rawData,
+        // Cast to satisfy Prisma's InputJsonValue — rawData is an opaque blob passed directly to DB
+        raw_data: weatherData.rawData as never,
       },
     })
   } catch (error) {
