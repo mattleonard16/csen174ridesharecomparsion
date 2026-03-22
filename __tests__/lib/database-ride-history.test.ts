@@ -41,19 +41,21 @@ const mockReportPersistenceError = reportPersistenceError as jest.MockedFunction
 
 const NOW = new Date('2024-06-15T12:00:00.000Z')
 
-const makeRecord = (overrides: Partial<{
-  id: string
-  routeId: string | null
-  service: string
-  estimatedFare: number
-  finalFare: number | null
-  waitTimeMinutes: number | null
-  surgeMultiplier: number | null
-  comparisonSnapshot: ComparisonResults
-  requestedAt: Date
-  updatedAt: Date
-  route: { pickup_address: string; destination_address: string } | null
-}> = {}) => ({
+const makeRecord = (
+  overrides: Partial<{
+    id: string
+    routeId: string | null
+    service: string
+    estimatedFare: number
+    finalFare: number | null
+    waitTimeMinutes: number | null
+    surgeMultiplier: number | null
+    comparisonSnapshot: ComparisonResults
+    requestedAt: Date
+    updatedAt: Date
+    route: { pickup_address: string; destination_address: string } | null
+  }> = {}
+) => ({
   id: 'history-1',
   routeId: 'route-1',
   service: $Enums.ServiceType.UBER,
@@ -465,17 +467,14 @@ describe('deleteRideHistory', () => {
   })
 
   it('returns true when record is found and deleted', async () => {
-    ;(prisma.rideHistory.findFirst as jest.Mock).mockResolvedValue({ id: 'history-1' })
     ;(prisma.rideHistory.delete as jest.Mock).mockResolvedValue({ id: 'history-1' })
 
     const result = await deleteRideHistory('history-1', 'user-1')
 
     expect(result).toBe(true)
-    expect(prisma.rideHistory.findFirst).toHaveBeenCalledWith({
+    expect(prisma.rideHistory.delete).toHaveBeenCalledWith({
       where: { id: 'history-1', userId: 'user-1' },
-      select: { id: true },
     })
-    expect(prisma.rideHistory.delete).toHaveBeenCalledWith({ where: { id: 'history-1' } })
   })
 
   it('returns false when database is unavailable', async () => {
@@ -484,21 +483,22 @@ describe('deleteRideHistory', () => {
     const result = await deleteRideHistory('history-1', 'user-1')
 
     expect(result).toBe(false)
-    expect(prisma.rideHistory.findFirst).not.toHaveBeenCalled()
+    expect(prisma.rideHistory.delete).not.toHaveBeenCalled()
   })
 
   it('returns false when record is not found (IDOR — wrong userId)', async () => {
-    ;(prisma.rideHistory.findFirst as jest.Mock).mockResolvedValue(null)
+    const p2025Error = new Error('Record not found')
+    ;(p2025Error as Record<string, unknown>).code = 'P2025'
+    ;(prisma.rideHistory.delete as jest.Mock).mockRejectedValue(p2025Error)
 
     const result = await deleteRideHistory('history-1', 'wrong-user')
 
     expect(result).toBe(false)
-    expect(prisma.rideHistory.delete).not.toHaveBeenCalled()
   })
 
   it('returns false and reports error when prisma throws', async () => {
     const dbError = new Error('delete failed')
-    ;(prisma.rideHistory.findFirst as jest.Mock).mockRejectedValue(dbError)
+    ;(prisma.rideHistory.delete as jest.Mock).mockRejectedValue(dbError)
 
     const result = await deleteRideHistory('history-1', 'user-1')
 

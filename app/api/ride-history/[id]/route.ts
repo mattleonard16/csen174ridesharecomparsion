@@ -117,6 +117,6 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   return withCors(withRateLimit((req: NextRequest) => deleteHandler(req, params.id)))(request)
 }
 
-export const OPTIONS = withCors(async (_req: NextRequest) =>
-  new NextResponse(null, { status: 204 })
+export const OPTIONS = withCors(
+  async (_req: NextRequest) => new NextResponse(null, { status: 204 })
 )

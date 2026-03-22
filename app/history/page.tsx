@@ -57,7 +57,9 @@ export default function HistoryPage() {
       const data = (await res.json()) as RideHistoryStats
       setStats(data)
     } catch (error) {
-      setStatsError(error instanceof Error ? error.message : 'Unable to load spending analytics right now.')
+      setStatsError(
+        error instanceof Error ? error.message : 'Unable to load spending analytics right now.'
+      )
     } finally {
       setStatsLoading(false)
     }
@@ -253,9 +255,7 @@ export default function HistoryPage() {
                 </div>
                 <span className="text-sm text-muted-foreground font-medium">Avg Fare</span>
               </div>
-              <div className="text-3xl font-black text-foreground">
-                ${stats.avgFare.toFixed(2)}
-              </div>
+              <div className="text-3xl font-black text-foreground">${stats.avgFare.toFixed(2)}</div>
             </div>
 
             <div className="card-elevated rounded-xl p-6">
@@ -321,7 +321,9 @@ export default function HistoryPage() {
                     {/* Left: ride info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="font-bold text-foreground capitalize">{entry.service}</span>
+                        <span className="font-bold text-foreground capitalize">
+                          {entry.service}
+                        </span>
                         <span className="text-muted-foreground text-sm">•</span>
                         <span className="text-sm text-muted-foreground" suppressHydrationWarning>
                           {formatDate(entry.requestedAt)} {formatTime(entry.requestedAt)}

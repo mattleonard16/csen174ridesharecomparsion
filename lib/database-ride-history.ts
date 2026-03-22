@@ -153,9 +153,7 @@ export async function getRideHistoryForUser(
     const page = hasNextPage ? records.slice(0, limit) : records
     const nextCursor = hasNextPage ? (page[page.length - 1]?.id ?? null) : null
 
-    const total = cursor
-      ? 0
-      : await prisma.rideHistory.count({ where: { userId } })
+    const total = cursor ? 0 : await prisma.rideHistory.count({ where: { userId } })
 
     const history = page.map(mapToEntry)
 
@@ -191,8 +189,8 @@ export async function getRideHistoryStats(
 
     const where = { userId, requestedAt: { gte: cutoff } }
 
-    // Fetch all ride records to compute totalSpent and totalSavings in application code
-    // (finalFare may be null, so we fall back to estimatedFare)
+    // Fetch ride records with a cap to prevent memory exhaustion.
+    // For users with very large histories, we cap at 1000 records for savings computation.
     const records = await prisma.rideHistory.findMany({
       where,
       select: {
@@ -201,6 +199,8 @@ export async function getRideHistoryStats(
         finalFare: true,
         comparisonSnapshot: true,
       },
+      orderBy: { requestedAt: 'desc' },
+      take: 1000,
     })
 
     if (records.length === 0) {
@@ -318,16 +318,7 @@ export async function deleteRideHistory(id: string, userId: string): Promise<boo
   }
 
   try {
-    const record = await prisma.rideHistory.findFirst({
-      where: { id, userId },
-      select: { id: true },
-    })
-
-    if (!record) {
-      return false
-    }
-
-    await prisma.rideHistory.delete({ where: { id } })
+    await prisma.rideHistory.delete({ where: { id, userId } })
 
     return true
   } catch (error) {

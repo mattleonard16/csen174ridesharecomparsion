@@ -14,10 +14,9 @@ const CreateRideHistorySchema = z.object({
   estimatedFare: z.number().positive().max(1000),
   waitTimeMinutes: z.number().int().min(0).max(180).optional(),
   surgeMultiplier: z.number().min(1).max(10).optional(),
-  comparisonSnapshot: z.record(z.unknown()).refine(
-    val => JSON.stringify(val).length <= 65536,
-    'Comparison snapshot too large'
-  ),
+  comparisonSnapshot: z
+    .record(z.unknown())
+    .refine(val => JSON.stringify(val).length <= 65536, 'Comparison snapshot too large'),
 })
 
 async function handlePost(request: NextRequest) {
@@ -33,6 +32,14 @@ async function handlePost(request: NextRequest) {
       )
     }
     userId = session.user.id
+
+    const contentLength = parseInt(request.headers.get('content-length') ?? '0', 10)
+    if (contentLength > 100_000) {
+      return NextResponse.json(
+        { error: 'Request body too large' },
+        { status: 413, headers: createResponseHeaders(requestId) }
+      )
+    }
 
     const body = await request.json()
 
@@ -129,4 +136,6 @@ async function handleGet(request: NextRequest) {
 
 export const GET = withCors(withRateLimit(handleGet))
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(handleGet)
+export const OPTIONS = withCors(
+  async (_req: NextRequest) => new NextResponse(null, { status: 204 })
+)
