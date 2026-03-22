@@ -72,6 +72,17 @@ export {
 } from './database-pricing-stats'
 
 // ============================================================================
+// Ride History Operations
+// ============================================================================
+export {
+  createRideHistory,
+  getRideHistoryForUser,
+  getRideHistoryStats,
+  updateRideHistoryFare,
+  deleteRideHistory,
+} from './database-ride-history'
+
+// ============================================================================
 // Legacy Exports
 // ============================================================================
 

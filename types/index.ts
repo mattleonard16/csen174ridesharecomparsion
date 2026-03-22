@@ -107,3 +107,32 @@ export interface CommonPlace {
 }
 
 export type CommonPlaces = Record<string, CommonPlace>
+
+export interface RideHistoryEntry {
+  id: string
+  routeId: string | null
+  service: ServiceType
+  estimatedFare: number
+  finalFare: number | null
+  waitTimeMinutes: number | null
+  surgeMultiplier: number | null
+  comparisonSnapshot: ComparisonResults
+  requestedAt: string
+  updatedAt: string
+  pickupAddress?: string
+  destinationAddress?: string
+}
+
+export interface RideHistoryListResponse {
+  history: RideHistoryEntry[]
+  nextCursor: string | null
+  total: number
+}
+
+export interface RideHistoryStats {
+  totalSpent: number
+  rideCount: number
+  avgFare: number
+  byService: Partial<Record<ServiceType, { count: number; totalSpent: number; avgFare: number }>>
+  totalSavings: number
+}

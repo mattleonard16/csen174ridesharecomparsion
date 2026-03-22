@@ -223,6 +223,9 @@ model RideHistory {
   surgeMultiplier    Float?
   comparisonSnapshot Json
   requestedAt        DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([userId, requestedAt])
 }
 
 model User {
