@@ -9,6 +9,7 @@ import {
   TrendingDown,
   Minus,
   BarChart3,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useState, memo, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -101,6 +102,7 @@ export default memo(function RideComparisonResults({
   const [showPriceAlert, setShowPriceAlert] = useState(false)
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [routeSaved, setRouteSaved] = useState(false)
+  const [loggedServices, setLoggedServices] = useState<Set<string>>(new Set())
 
   // Memoize services array first (used by handlers below)
   const services = useMemo(() => {
@@ -275,6 +277,44 @@ export default memo(function RideComparisonResults({
       // Save failed silently — non-critical operation
     }
   }, [user, routeId, pickup, destination])
+
+  const handleLogRide = useCallback(
+    async (serviceKey: string) => {
+      if (!user) {
+        setShowAuthDialog(true)
+        return
+      }
+      const result = results[serviceKey as keyof Results]
+      if (!result) return
+
+      const fare = parseFloat(result.price.replace(/\$/g, ''))
+      const waitTimeMinutes = parseInt(result.waitTime)
+      const surge = result.surgeMultiplier
+        ? parseFloat(result.surgeMultiplier.replace(/x/gi, ''))
+        : undefined
+
+      try {
+        const response = await fetch('/api/ride-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            routeId: routeId ?? undefined,
+            service: serviceKey,
+            estimatedFare: fare,
+            waitTimeMinutes,
+            surgeMultiplier: surge,
+            comparisonSnapshot: results,
+          }),
+        })
+        if (!response.ok) throw new Error('Failed to log ride')
+        setLoggedServices(prev => new Set([...Array.from(prev), serviceKey]))
+        toast.success('Ride logged!')
+      } catch {
+        toast.error('Failed to log ride')
+      }
+    },
+    [user, routeId, results]
+  )
 
   const handleSetPriceAlert = useCallback(
     async (threshold: number) => {
@@ -633,6 +673,25 @@ export default memo(function RideComparisonResults({
                 >
                   <Share2 className="h-4 w-4 group-hover:text-primary transition-colors" />
                   Share ETA
+                </button>
+
+                <button
+                  onClick={() => handleLogRide(service.name.toLowerCase())}
+                  disabled={loggedServices.has(service.name.toLowerCase())}
+                  className={`w-full py-2 px-4 text-sm transition-colors flex items-center justify-center gap-2 group ${
+                    loggedServices.has(service.name.toLowerCase())
+                      ? 'text-muted-foreground/50 cursor-default'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <ClipboardCheck
+                    className={`h-4 w-4 transition-colors ${
+                      loggedServices.has(service.name.toLowerCase())
+                        ? 'text-secondary'
+                        : 'group-hover:text-secondary'
+                    }`}
+                  />
+                  {loggedServices.has(service.name.toLowerCase()) ? 'Logged' : 'I took this ride'}
                 </button>
               </div>
             </div>
