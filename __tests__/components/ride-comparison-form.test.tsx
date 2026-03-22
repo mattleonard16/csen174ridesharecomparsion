@@ -112,7 +112,6 @@ jest.mock('@/lib/popular-routes-data', () => ({
   }),
 }))
 
-
 describe('RideComparisonForm', () => {
   beforeEach(() => {
     jest.clearAllMocks()

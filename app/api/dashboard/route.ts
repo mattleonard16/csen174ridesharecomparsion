@@ -62,80 +62,80 @@ async function handleGet(request: NextRequest) {
 
       const [savingsActions, comparisonCount, alertsSet, unreadAlertCount, surgeInsightsRaw] =
         await Promise.all([
-        // Savings from followed recommendations
-        process.env.DATABASE_URL
-          ? prisma.recommendationAction
-              .findMany({
-                where: {
-                  userId,
-                  action: 'FOLLOWED',
-                  estimatedSavings: { not: null },
-                  createdAt: { gte: thirtyDaysAgo },
-                },
-                select: { estimatedSavings: true },
+          // Savings from followed recommendations
+          process.env.DATABASE_URL
+            ? prisma.recommendationAction
+                .findMany({
+                  where: {
+                    userId,
+                    action: 'FOLLOWED',
+                    estimatedSavings: { not: null },
+                    createdAt: { gte: thirtyDaysAgo },
+                  },
+                  select: { estimatedSavings: true },
+                })
+                .catch(() => [])
+            : Promise.resolve([]),
+          // Count of search logs (comparisons)
+          process.env.DATABASE_URL
+            ? prisma.searchLog
+                .count({
+                  where: {
+                    userId,
+                    createdAt: { gte: thirtyDaysAgo },
+                  },
+                })
+                .catch(() => 0)
+            : Promise.resolve(0),
+          // Count of active alerts
+          process.env.DATABASE_URL
+            ? prisma.priceAlert
+                .count({
+                  where: {
+                    userId,
+                    isActive: true,
+                  },
+                })
+                .catch(() => 0)
+            : Promise.resolve(0),
+          process.env.DATABASE_URL
+            ? prisma.alertNotification
+                .count({
+                  where: {
+                    userId,
+                    isRead: false,
+                  },
+                })
+                .catch(() => 0)
+            : Promise.resolve(0),
+          // Surge insights from first saved route's RouteInsights
+          (async () => {
+            if (!process.env.DATABASE_URL) return []
+            const firstSavedRoute = await prisma.savedRoute
+              .findFirst({
+                where: { userId, routeId: { not: null } },
+                select: { routeId: true },
               })
-              .catch(() => [])
-          : Promise.resolve([]),
-        // Count of search logs (comparisons)
-        process.env.DATABASE_URL
-          ? prisma.searchLog
-              .count({
-                where: {
-                  userId,
-                  createdAt: { gte: thirtyDaysAgo },
-                },
+              .catch(() => null)
+            if (!firstSavedRoute?.routeId) return []
+            const insights = await prisma.routeInsights
+              .findFirst({
+                where: { routeId: firstSavedRoute.routeId },
+                select: { surgeProbabilityByHour: true },
               })
-              .catch(() => 0)
-          : Promise.resolve(0),
-        // Count of active alerts
-        process.env.DATABASE_URL
-          ? prisma.priceAlert
-              .count({
-                where: {
-                  userId,
-                  isActive: true,
-                },
-              })
-              .catch(() => 0)
-          : Promise.resolve(0),
-        process.env.DATABASE_URL
-          ? prisma.alertNotification
-              .count({
-                where: {
-                  userId,
-                  isRead: false,
-                },
-              })
-              .catch(() => 0)
-          : Promise.resolve(0),
-        // Surge insights from first saved route's RouteInsights
-        (async () => {
-          if (!process.env.DATABASE_URL) return []
-          const firstSavedRoute = await prisma.savedRoute
-            .findFirst({
-              where: { userId, routeId: { not: null } },
-              select: { routeId: true },
-            })
-            .catch(() => null)
-          if (!firstSavedRoute?.routeId) return []
-          const insights = await prisma.routeInsights
-            .findFirst({
-              where: { routeId: firstSavedRoute.routeId },
-              select: { surgeProbabilityByHour: true },
-            })
-            .catch(() => null)
-          if (!insights?.surgeProbabilityByHour) return []
-          const surgeData = insights.surgeProbabilityByHour as Record<string, number>
-          return Object.entries(surgeData)
-            .map(([hour, probability]) => ({
-              hour: parseInt(hour, 10),
-              probability,
-            }))
-            .filter(s => s.probability > 0.1)
-            .sort((a, b) => b.probability - a.probability)
-            .slice(0, 8)
-        })(),
-      ])
+              .catch(() => null)
+            if (!insights?.surgeProbabilityByHour) return []
+            const surgeData = insights.surgeProbabilityByHour as Record<string, number>
+            return Object.entries(surgeData)
+              .map(([hour, probability]) => ({
+                hour: parseInt(hour, 10),
+                probability,
+              }))
+              .filter(s => s.probability > 0.1)
+              .sort((a, b) => b.probability - a.probability)
+              .slice(0, 8)
+          })(),
+        ])
 
       const totalSavings = savingsActions.reduce((sum, a) => sum + (a.estimatedSavings ?? 0), 0)
 
