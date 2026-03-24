@@ -22,11 +22,7 @@ import { enhanceWithAI } from '@/lib/services/ai-insights'
 import { evaluateAndCreateNotifications } from '@/lib/alert-evaluation'
 import { log, logError } from '@/lib/monitoring'
 import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
-import type {
-  ComparisonApiResponse,
-  CoordinateComparisonRequest,
-  ServiceType,
-} from '@/types'
+import type { ComparisonApiResponse, CoordinateComparisonRequest, ServiceType } from '@/types'
 
 function mapCompareError(error: CompareServiceErrorCode): {
   status: number

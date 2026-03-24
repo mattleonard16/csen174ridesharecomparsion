@@ -164,7 +164,6 @@ const WAYMO_SERVICE_AREAS = {
   },
 }
 
-
 function kmToMiles(km: number): number {
   return km * 0.621371
 }
@@ -538,7 +537,10 @@ async function geocodeWithCache(address: string): Promise<Coordinates> {
         )
       }
 
-      return [parseFloat(data[0].lon) as Longitude, parseFloat(data[0].lat) as Latitude] as Coordinates
+      return [
+        parseFloat(data[0].lon) as Longitude,
+        parseFloat(data[0].lat) as Latitude,
+      ] as Coordinates
     }
   )
 

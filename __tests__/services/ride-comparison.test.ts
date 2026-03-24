@@ -35,7 +35,12 @@ jest.mock('@/lib/cache/redis-cache', () => {
   const clearAll = () => store.clear()
   const prePopulate = (key: string, value: unknown) => store.set(key, value)
 
-  return { getCached: getCachedMock, clearCacheNamespace: clearCacheNamespaceMock, clearAll, prePopulate }
+  return {
+    getCached: getCachedMock,
+    clearCacheNamespace: clearCacheNamespaceMock,
+    clearAll,
+    prePopulate,
+  }
 })
 
 jest.mock('@/lib/database', () => ({

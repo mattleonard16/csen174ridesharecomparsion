@@ -69,7 +69,9 @@ describe('evaluateAndCreateNotifications', () => {
     ;(prisma.priceAlert.update as jest.Mock).mockImplementation(({ where, data }) =>
       Promise.resolve({ id: where.id, ...data })
     )
-    ;(prisma.$transaction as jest.Mock).mockImplementation(async operations => Promise.all(operations))
+    ;(prisma.$transaction as jest.Mock).mockImplementation(async operations =>
+      Promise.all(operations)
+    )
   })
 
   it('returns early when the database is unavailable', async () => {
