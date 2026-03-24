@@ -322,7 +322,9 @@ export async function generateRecommendations(
       }
 
       // Limit to 3 recommendations, sorted by confidence
-      const sortedRecs = [...recommendations].sort((a, b) => b.confidence - a.confidence).slice(0, 3)
+      const sortedRecs = [...recommendations]
+        .sort((a, b) => b.confidence - a.confidence)
+        .slice(0, 3)
 
       const result: RecommendationOutput = { recommendations: sortedRecs }
 

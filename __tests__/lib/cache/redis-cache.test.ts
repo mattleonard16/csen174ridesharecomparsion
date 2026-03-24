@@ -223,11 +223,7 @@ describe('incrementQuotaCounter', () => {
     // Verify the expireat timestamp is for next midnight UTC
     const expireAt = mockExpireat.mock.calls[0][1] as number
     const now = new Date()
-    const nextMidnight = Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + 1
-    )
+    const nextMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
     const expectedExpireAt = Math.floor(nextMidnight / 1000)
 
     // Allow +-60 seconds tolerance for test timing

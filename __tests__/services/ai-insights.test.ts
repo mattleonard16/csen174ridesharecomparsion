@@ -264,11 +264,7 @@ describe('AI Insights Service', () => {
 
   describe('getCached integration', () => {
     it('getCached hit path — compute not called — recommendations returned from cache', async () => {
-      const cachedMessages = [
-        'Cached message 1',
-        'Cached message 2',
-        'Cached message 3',
-      ]
+      const cachedMessages = ['Cached message 1', 'Cached message 2', 'Cached message 3']
 
       // Simulate a cache hit — compute is never called
       mockGetCached.mockResolvedValueOnce({ value: cachedMessages, cacheHit: true })
