@@ -12,6 +12,7 @@ jobs:
     env:
       CI: true
       NEXTAUTH_SECRET: test-secret
+      AUTH_SECRET: test-secret
       NEXTAUTH_URL: http://localhost:3000
       DATABASE_URL: postgresql://test:test@localhost:5432/test
       DIRECT_URL: postgresql://test:test@localhost:5432/test

@@ -39,6 +39,12 @@ RECAPTCHA_API_KEY="..."                # reCAPTCHA API key (for Enterprise)
 RECAPTCHA_PROJECT_ID="..."             # reCAPTCHA project ID (for Enterprise)
 ```
 
+## Vercel / Deployment
+
+```bash
+CRON_SECRET="your-cron-secret"        # Required for Vercel cron job authentication (/api/cron/cleanup)
+```
+
 ## Optional
 
 ```bash

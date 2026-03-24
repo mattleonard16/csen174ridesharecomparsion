@@ -167,19 +167,33 @@ export async function verifyRecaptchaToken(
     // Call the reCAPTCHA Enterprise Assessment API
     const assessmentUrl = `https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`
 
-    const response = await fetch(assessmentUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        event: {
-          token: token,
-          siteKey: siteKey,
-          expectedAction: expectedAction,
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+
+    let response: Response
+    try {
+      response = await fetch(assessmentUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      }),
-    })
+        body: JSON.stringify({
+          event: {
+            token: token,
+            siteKey: siteKey,
+            expectedAction: expectedAction,
+          },
+        }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+    } catch (fetchError) {
+      clearTimeout(timeoutId)
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        return { success: false, score: 0, error: 'reCAPTCHA verification timed out' }
+      }
+      throw fetchError
+    }
 
     if (!response.ok) {
       return {

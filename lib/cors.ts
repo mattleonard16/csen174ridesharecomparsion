@@ -6,12 +6,22 @@ import { NextRequest, NextResponse } from 'next/server'
  * Only allow requests from:
  * - localhost:3000 (development)
  * - Production domain via NEXT_PUBLIC_APP_URL env var
- *
- * No wildcard (*) - this is not a public API.
+ * - Vercel preview/production deployments (*.vercel.app)
  */
-const allowedOrigins = ['http://localhost:3000', process.env.NEXT_PUBLIC_APP_URL || ''].filter(
-  Boolean
+const allowedOrigins = ['http://localhost:3000', process.env.NEXT_PUBLIC_APP_URL].filter(
+  (origin): origin is string => Boolean(origin)
 )
+
+/**
+ * Returns true if the given origin is permitted to access the API.
+ * Explicit allowlist takes priority; Vercel deployment URLs are also allowed.
+ */
+function isAllowedOrigin(origin: string): boolean {
+  if (allowedOrigins.includes(origin)) return true
+  // Allow Vercel preview/production deployments
+  if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return true
+  return false
+}
 
 type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
 
@@ -32,12 +42,12 @@ type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
  * Key design decisions:
  * - All CORS logic in app code, no API gateway
  * - Rate limiting stays inside handlers
- * - Simple origin allowlist, no regex magic
+ * - Explicit allowlist + Vercel deployment pattern matching
  */
 export function withCors(handler: Handler): Handler {
   return async (req: NextRequest) => {
     const origin = req.headers.get('origin') || ''
-    const isAllowed = allowedOrigins.includes(origin)
+    const isAllowed = isAllowedOrigin(origin)
 
     // Handle preflight OPTIONS requests
     if (req.method === 'OPTIONS') {

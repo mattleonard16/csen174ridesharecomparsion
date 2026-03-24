@@ -229,10 +229,11 @@ async function handlePost(request: NextRequest) {
           )
         }
 
-        if (
+        const isBotTraffic =
           recaptchaResult.score !== undefined &&
           recaptchaResult.score < RECAPTCHA_CONFIG.LENIENT_THRESHOLD
-        ) {
+
+        if (isBotTraffic) {
           return NextResponse.json(
             {
               error: 'Security verification failed. Please try again.',
@@ -242,12 +243,13 @@ async function handlePost(request: NextRequest) {
           )
         }
 
-        if (isProduction) {
-          return NextResponse.json(
-            { error: 'Security verification unavailable. Please try again later.' },
-            { status: 503, headers: createResponseHeaders(requestId) }
-          )
-        }
+        // Configuration missing or network/timeout failure — degrade gracefully
+        // rather than blocking legitimate users with a 503.
+        log('reCAPTCHA verification non-blocking failure, continuing request', {
+          requestId,
+          sessionId: request.headers.get('x-session-id') ?? undefined,
+          error: recaptchaResult.error,
+        })
       }
     } else if (!isPrecomputedRoute && !body.recaptchaToken && isProduction) {
       return NextResponse.json(
@@ -370,4 +372,6 @@ async function handlePost(request: NextRequest) {
 
 export const GET = withCors(withRateLimit(handleGet))
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(handleGet)
+export const OPTIONS = withCors(async () => {
+  return new NextResponse(null, { status: 204 })
+})
