@@ -190,7 +190,7 @@ export async function verifyRecaptchaToken(
     } catch (fetchError) {
       clearTimeout(timeoutId)
       if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        return { success: false, score: 0, error: 'reCAPTCHA verification timed out' }
+        return { success: false, error: 'reCAPTCHA verification timed out' }
       }
       throw fetchError
     }

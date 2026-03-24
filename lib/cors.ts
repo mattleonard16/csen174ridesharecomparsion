@@ -6,20 +6,29 @@ import { NextRequest, NextResponse } from 'next/server'
  * Only allow requests from:
  * - localhost:3000 (development)
  * - Production domain via NEXT_PUBLIC_APP_URL env var
- * - Vercel preview/production deployments (*.vercel.app)
+ * - Project-scoped Vercel preview/production deployments
  */
 const allowedOrigins = ['http://localhost:3000', process.env.NEXT_PUBLIC_APP_URL].filter(
   (origin): origin is string => Boolean(origin)
 )
 
+const VERCEL_PROJECT_NAME = process.env.VERCEL_PROJECT_NAME || 'ridesharecomparsion'
+
 /**
  * Returns true if the given origin is permitted to access the API.
- * Explicit allowlist takes priority; Vercel deployment URLs are also allowed.
+ * Explicit allowlist takes priority; project-scoped Vercel deployments also allowed.
  */
 function isAllowedOrigin(origin: string): boolean {
   if (allowedOrigins.includes(origin)) return true
-  // Allow Vercel preview/production deployments
-  if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return true
+  // Allow this project's Vercel preview/production deployments only
+  try {
+    const hostname = new URL(origin).hostname
+    if (hostname.endsWith('.vercel.app') && hostname.includes(VERCEL_PROJECT_NAME)) {
+      return true
+    }
+  } catch {
+    // Invalid URL — not allowed
+  }
   return false
 }
 

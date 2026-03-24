@@ -42,7 +42,7 @@ RECAPTCHA_PROJECT_ID="..."             # reCAPTCHA project ID (for Enterprise)
 ## Vercel / Deployment
 
 ```bash
-CRON_SECRET="your-cron-secret"        # Required for Vercel cron job authentication (/api/cron/cleanup)
+CRON_SECRET="your-cron-secret"        # Required for Vercel cron job authentication (all /api/cron/* endpoints)
 ```
 
 ## Optional

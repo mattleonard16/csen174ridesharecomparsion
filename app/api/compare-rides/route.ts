@@ -222,7 +222,10 @@ async function handlePost(request: NextRequest) {
       )
 
       if (!recaptchaResult.success) {
-        if (recaptchaResult.error?.includes('Action mismatch')) {
+        if (
+          recaptchaResult.error?.startsWith('reCAPTCHA token invalid') ||
+          recaptchaResult.error?.includes('Action mismatch')
+        ) {
           return NextResponse.json(
             { error: 'Security verification failed. Please refresh and try again.' },
             { status: 403, headers: createResponseHeaders(requestId) }
