@@ -1,0 +1,30 @@
+commands:
+  install: npm install
+  typecheck: npm run typecheck
+  build: npm run build
+  test: npm test
+  lint: npm run lint
+  lint:fix: npm run lint:fix
+  format: npm run format
+  format:check: npm run format:check
+  quality: npm run quality
+  test:e2e: npm run test:e2e
+  db:migrate: npm run db:migrate
+  db:generate: npm run db:generate
+  db:studio: npm run db:studio
+  seed: npm run seed
+
+services:
+  postgres:
+    start: pg_isready -h localhost -p 5432 || echo "PostgreSQL must be started manually"
+    stop: ""
+    healthcheck: pg_isready -h localhost -p 5432
+    port: 5432
+    depends_on: []
+
+  dev:
+    start: npm run dev
+    stop: lsof -ti :3000 | xargs kill
+    healthcheck: curl -sf http://localhost:3000/api/health
+    port: 3000
+    depends_on: [postgres]
