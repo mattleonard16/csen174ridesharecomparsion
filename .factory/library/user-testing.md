@@ -10,6 +10,7 @@ Testing surface, required testing skills/tools, resource cost classification per
 ## Validation Surface
 
 ### Browser Surface (Primary)
+
 - **Pages to test**: `/` (home/comparison), `/dashboard`, `/history`, `/trends`
 - **Auth flows**: Login via NextAuth credentials provider, auth-gated redirects
 - **Interactive elements**: Charts (Recharts — tooltips, zoom, service toggles), inline fare editing, delete confirmation, "I took this ride" button, route/service selectors
@@ -18,6 +19,7 @@ Testing surface, required testing skills/tools, resource cost classification per
 - **Tool**: `agent-browser` (required for all browser validation)
 
 ### API Surface
+
 - **Endpoints**: `/api/price-trends`, `/api/price-trends/summary`, `/api/ride-history` (GET/POST), `/api/ride-history/[id]` (PATCH/DELETE), `/api/dashboard`
 - **Auth**: Session cookie required — use authenticated test user
 - **Validation**: Zod schemas on all endpoints — test boundary conditions
@@ -27,6 +29,7 @@ Testing surface, required testing skills/tools, resource cost classification per
 ## Validation Concurrency
 
 ### Resource Assessment
+
 - **Machine**: 10 CPU cores, 16 GB RAM
 - **Baseline usage**: ~6 GB RAM
 - **Available headroom**: 10 GB × 0.7 = **7 GB usable**
@@ -35,10 +38,11 @@ Testing surface, required testing skills/tools, resource cost classification per
 - **Max concurrent validators**: **5** (5 × 300 MB + 200 MB = 1.7 GB, well within 7 GB budget)
 
 ### Per-Surface Classification
-| Surface | Tool | Resource Cost | Max Concurrent |
-|---------|------|---------------|----------------|
-| Browser | agent-browser | ~300 MB per instance | 5 |
-| API | curl | Negligible | Unlimited |
+
+| Surface | Tool          | Resource Cost        | Max Concurrent |
+| ------- | ------------- | -------------------- | -------------- |
+| Browser | agent-browser | ~300 MB per instance | 5              |
+| API     | curl          | Negligible           | Unlimited      |
 
 ## Runtime Gotchas
 

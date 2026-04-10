@@ -10,8 +10,9 @@ NOTE: Startup and cleanup are handled by `worker-base`. This skill defines the W
 ## When to Use This Skill
 
 Features that involve:
-- New or modified API route handlers (app/api/*)
-- Database query functions (lib/database-*.ts)
+
+- New or modified API route handlers (app/api/\*)
+- Database query functions (lib/database-\*.ts)
 - Zod validation schemas
 - Server-side business logic
 
@@ -22,6 +23,7 @@ None beyond standard tools.
 ## Work Procedure
 
 ### 1. Read Context
+
 - Read `mission.md` for the full mission scope
 - Read `AGENTS.md` for coding conventions and boundaries
 - Read `.factory/library/architecture.md` for system understanding
@@ -29,6 +31,7 @@ None beyond standard tools.
 - Read the specific feature description carefully
 
 ### 2. Write Tests First (TDD — Red Phase)
+
 - Write failing tests BEFORE implementation
 - Tests go in `__tests__/` following existing patterns
 - For API routes: test auth (401), validation (400), IDOR, happy path, error handling
@@ -36,6 +39,7 @@ None beyond standard tools.
 - Run `npm test -- <test-file>` to confirm tests FAIL (red)
 
 ### 3. Implement (Green Phase)
+
 - Follow existing patterns in the codebase (check similar files first)
 - API routes: follow patterns in `app/api/price-alerts/route.ts` and `app/api/dashboard/route.ts`
   - Auth check with `getServerSession(authOptions)`
@@ -52,18 +56,21 @@ None beyond standard tools.
 - Run `npm test -- <test-file>` to confirm tests PASS (green)
 
 ### 4. Verify
+
 - Run `npm run typecheck` — must pass with zero errors
 - Run `npm run lint` — must pass with zero errors
 - Run `npm test` — all tests must pass (not just new ones)
 - Run `npm run format:check` — must pass
 
 ### 5. Manual Verification
+
 - Start dev server if not running: `npm run dev`
 - Test new endpoints with curl (with proper auth cookie)
 - Verify error handling with invalid inputs
 - Check that existing endpoints are not broken
 
 ### 6. Commit
+
 - Stage only the files you created/modified
 - Write a concise commit message following existing style (e.g., `feat(api): add price trends endpoints`)
 
@@ -76,37 +83,50 @@ None beyond standard tools.
   "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
-      { "command": "npm test -- __tests__/api/price-trends.test.ts", "exitCode": 0, "observation": "16 tests passed" },
+      {
+        "command": "npm test -- __tests__/api/price-trends.test.ts",
+        "exitCode": 0,
+        "observation": "16 tests passed"
+      },
       { "command": "npm run typecheck", "exitCode": 0, "observation": "No errors" },
       { "command": "npm run lint", "exitCode": 0, "observation": "No issues" },
       { "command": "npm test", "exitCode": 0, "observation": "All 424 tests pass" }
     ],
     "interactiveChecks": [
-      { "action": "curl GET /api/price-trends?routeId=abc with auth cookie", "observed": "200 with price snapshots array" },
-      { "action": "curl GET /api/price-trends without routeId", "observed": "400 with validation error" },
+      {
+        "action": "curl GET /api/price-trends?routeId=abc with auth cookie",
+        "observed": "200 with price snapshots array"
+      },
+      {
+        "action": "curl GET /api/price-trends without routeId",
+        "observed": "400 with validation error"
+      },
       { "action": "curl GET /api/price-trends without auth", "observed": "401 Unauthorized" }
     ]
   },
   "tests": {
     "added": [
-      { "file": "__tests__/api/price-trends.test.ts", "cases": [
-        { "name": "returns 401 without auth", "verifies": "VAL-API-004" },
-        { "name": "returns 400 for missing routeId", "verifies": "VAL-API-005" },
-        { "name": "returns price history for valid route", "verifies": "VAL-API-001" },
-        { "name": "returns all services when service not specified", "verifies": "VAL-API-002" },
-        { "name": "respects daysBack parameter", "verifies": "VAL-API-003" },
-        { "name": "returns empty array for route with no data", "verifies": "VAL-API-006" },
-        { "name": "includes x-request-id header", "verifies": "VAL-API-011" },
-        { "name": "handles db unavailability gracefully", "verifies": "VAL-API-012" },
-        { "name": "includes CORS headers", "verifies": "VAL-API-013" },
-        { "name": "rate limiting applied", "verifies": "VAL-API-014" },
-        { "name": "filters by service when specified", "verifies": "VAL-API-015" },
-        { "name": "returns 400 for invalid service", "verifies": "VAL-API-017" },
-        { "name": "summary returns aggregated stats", "verifies": "VAL-API-007" },
-        { "name": "summary includes per-service breakdown", "verifies": "VAL-API-008" },
-        { "name": "summary includes surge probability by hour", "verifies": "VAL-API-009" },
-        { "name": "summary respects daysBack", "verifies": "VAL-API-016" }
-      ] }
+      {
+        "file": "__tests__/api/price-trends.test.ts",
+        "cases": [
+          { "name": "returns 401 without auth", "verifies": "VAL-API-004" },
+          { "name": "returns 400 for missing routeId", "verifies": "VAL-API-005" },
+          { "name": "returns price history for valid route", "verifies": "VAL-API-001" },
+          { "name": "returns all services when service not specified", "verifies": "VAL-API-002" },
+          { "name": "respects daysBack parameter", "verifies": "VAL-API-003" },
+          { "name": "returns empty array for route with no data", "verifies": "VAL-API-006" },
+          { "name": "includes x-request-id header", "verifies": "VAL-API-011" },
+          { "name": "handles db unavailability gracefully", "verifies": "VAL-API-012" },
+          { "name": "includes CORS headers", "verifies": "VAL-API-013" },
+          { "name": "rate limiting applied", "verifies": "VAL-API-014" },
+          { "name": "filters by service when specified", "verifies": "VAL-API-015" },
+          { "name": "returns 400 for invalid service", "verifies": "VAL-API-017" },
+          { "name": "summary returns aggregated stats", "verifies": "VAL-API-007" },
+          { "name": "summary includes per-service breakdown", "verifies": "VAL-API-008" },
+          { "name": "summary includes surge probability by hour", "verifies": "VAL-API-009" },
+          { "name": "summary respects daysBack", "verifies": "VAL-API-016" }
+        ]
+      }
     ]
   },
   "discoveredIssues": []

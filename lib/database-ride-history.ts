@@ -3,6 +3,7 @@
  * Handles creation, retrieval, update, and deletion of user ride history records.
  */
 
+import { Prisma } from '@/lib/generated/prisma'
 import { prisma } from '@/lib/prisma'
 import { isDatabaseAvailable, reportPersistenceError } from './database-logging'
 import { mapServiceToEnum, mapEnumToService } from './service-mappings'
@@ -184,8 +185,7 @@ export async function getRideHistoryStats(
   }
 
   try {
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - daysBack)
+    const cutoff = new Date(Date.now() - daysBack * 86_400_000)
 
     const where = { userId, requestedAt: { gte: cutoff } }
 
@@ -272,17 +272,34 @@ export async function getRideHistoryStats(
 // ============================================================================
 
 /**
+ * Returns true when the error is a Prisma P2025 "record not found" error.
+ * Handles both real PrismaClientKnownRequestError instances and duck-typed objects
+ * (e.g. plain Errors with a `.code` property, as emitted by some Prisma adapters).
+ */
+function isPrismaNotFound(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === 'P2025'
+  }
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: unknown }).code === 'P2025'
+  )
+}
+
+/**
  * Update the final fare for a ride history entry.
  * Enforces ownership via { id, userId } to prevent IDOR.
- * Returns the updated entry or null if not found / not owned.
+ * Returns { entry } on success, or { error: 'not_found' | 'db_error' } on failure.
  */
 export async function updateRideHistoryFare(
   id: string,
   userId: string,
   finalFare: number
-): Promise<RideHistoryEntry | null> {
+): Promise<{ entry: RideHistoryEntry } | { error: 'not_found' | 'db_error' }> {
   if (!isDatabaseAvailable()) {
-    return null
+    return { error: 'db_error' }
   }
 
   try {
@@ -299,30 +316,35 @@ export async function updateRideHistoryFare(
       },
     })
 
-    return mapToEntry(updated)
+    return { entry: mapToEntry(updated) }
   } catch (error) {
-    // Prisma throws P2025 (record not found) when id+userId doesn't match — treat as null
+    if (isPrismaNotFound(error)) return { error: 'not_found' }
     reportPersistenceError('updateRideHistoryFare', error)
-    return null
+    return { error: 'db_error' }
   }
 }
 
 /**
  * Delete a ride history entry.
  * Enforces ownership by checking userId before deleting to prevent IDOR.
- * Returns true if deleted, false if not found or not owned.
+ * Returns 'deleted' if deleted, 'not_found' if the record doesn't exist or isn't owned,
+ * or 'error' if an unexpected database failure occurred.
  */
-export async function deleteRideHistory(id: string, userId: string): Promise<boolean> {
+export async function deleteRideHistory(
+  id: string,
+  userId: string
+): Promise<'deleted' | 'not_found' | 'error'> {
   if (!isDatabaseAvailable()) {
-    return false
+    return 'error'
   }
 
   try {
     await prisma.rideHistory.delete({ where: { id, userId } })
 
-    return true
+    return 'deleted'
   } catch (error) {
+    if (isPrismaNotFound(error)) return 'not_found'
     reportPersistenceError('deleteRideHistory', error)
-    return false
+    return 'error'
   }
 }

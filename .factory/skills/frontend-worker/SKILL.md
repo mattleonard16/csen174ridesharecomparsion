@@ -10,8 +10,9 @@ NOTE: Startup and cleanup are handled by `worker-base`. This skill defines the W
 ## When to Use This Skill
 
 Features that involve:
-- New or modified React components (components/*)
-- New pages (app/*/page.tsx)
+
+- New or modified React components (components/\*)
+- New pages (app/\*/page.tsx)
 - Chart components using Recharts
 - UI interactions, forms, navigation
 - Client-side data fetching and state management
@@ -23,6 +24,7 @@ Features that involve:
 ## Work Procedure
 
 ### 1. Read Context
+
 - Read `mission.md` for the full mission scope
 - Read `AGENTS.md` for coding conventions and boundaries
 - Read `.factory/library/architecture.md` for system understanding
@@ -30,13 +32,16 @@ Features that involve:
 - Read the specific feature description carefully
 
 ### 2. Study Existing Patterns
+
 Before writing code, study these reference files:
+
 - **Page pattern**: `app/dashboard/page.tsx` — auth guard, data fetching, loading/error/empty states
 - **Component pattern**: `components/history/ride-history-card.tsx` — reusable card with actions
 - **Chart integration**: Dashboard currently renders text lists — you are replacing these with Recharts
 - **Theme**: `next-themes` for dark mode — charts must support both themes
 
 ### 3. Write Tests First (TDD — Red Phase)
+
 - Write failing component tests BEFORE implementation
 - Tests go in `__tests__/` following existing patterns
 - For chart components: test rendering, data binding, empty/loading/error states
@@ -47,6 +52,7 @@ Before writing code, study these reference files:
 ### 4. Implement (Green Phase)
 
 #### Chart Components (CRITICAL)
+
 - ALL Recharts components MUST be loaded via `next/dynamic` with `ssr: false`:
   ```tsx
   const PriceChart = dynamic(() => import('./price-chart'), { ssr: false })
@@ -57,6 +63,7 @@ Before writing code, study these reference files:
 - Tooltips: customize with `content` prop for rich data display
 
 #### Page Patterns
+
 - `'use client'` directive at top
 - Auth guard: `useAuth()` → redirect if unauthenticated
 - Data fetching: `fetch()` in `useCallback`, triggered by `useEffect`
@@ -65,6 +72,7 @@ Before writing code, study these reference files:
 - Empty state: icon + message + CTA
 
 #### Styling
+
 - Tailwind CSS utilities — match existing dashboard style
 - Use existing design tokens: `text-primary`, `bg-muted`, `card-elevated`, etc.
 - Dark mode: test both themes explicitly
@@ -73,6 +81,7 @@ Before writing code, study these reference files:
 - Run `npm test -- <test-file>` to confirm tests PASS (green)
 
 ### 5. Visual Verification with agent-browser
+
 - Start dev server if not running: `npm run dev`
 - Use `agent-browser` skill to verify:
   - Chart renders with data
@@ -84,6 +93,7 @@ Before writing code, study these reference files:
 - Document each check as an `interactiveChecks` entry
 
 ### 6. Quality Gates
+
 - Run `npm run typecheck` — must pass
 - Run `npm run lint` — must pass
 - Run `npm test` — ALL tests pass (not just new ones)
@@ -91,6 +101,7 @@ Before writing code, study these reference files:
 - No hydration errors in console (check agent-browser output)
 
 ### 7. Commit
+
 - Stage only your files
 - Concise commit message (e.g., `feat(ui): add price trends line chart to dashboard`)
 
@@ -103,28 +114,50 @@ Before writing code, study these reference files:
   "whatWasLeftUndone": "",
   "verification": {
     "commandsRun": [
-      { "command": "npm test -- __tests__/components/price-trends-chart.test.tsx", "exitCode": 0, "observation": "5 tests passed" },
+      {
+        "command": "npm test -- __tests__/components/price-trends-chart.test.tsx",
+        "exitCode": 0,
+        "observation": "5 tests passed"
+      },
       { "command": "npm run typecheck", "exitCode": 0, "observation": "No errors" },
       { "command": "npm run lint", "exitCode": 0, "observation": "No issues" },
       { "command": "npm test", "exitCode": 0, "observation": "All 429 tests pass" }
     ],
     "interactiveChecks": [
-      { "action": "Navigate to /dashboard, select route, verify line chart renders", "observed": "LineChart visible with 7 days of price data, axes and legend present" },
-      { "action": "Toggle dark mode, verify chart colors update", "observed": "Chart background darkens, text becomes light, data lines remain visible" },
-      { "action": "Click 'All Services' toggle", "observed": "Four lines appear (Uber/Lyft/Taxi/Waymo) with distinct colors and legend" },
-      { "action": "Resize to 320px viewport", "observed": "Chart resizes to fit, no horizontal scroll" },
-      { "action": "Hover over data point", "observed": "Tooltip appears with price, time, service, surge info" }
+      {
+        "action": "Navigate to /dashboard, select route, verify line chart renders",
+        "observed": "LineChart visible with 7 days of price data, axes and legend present"
+      },
+      {
+        "action": "Toggle dark mode, verify chart colors update",
+        "observed": "Chart background darkens, text becomes light, data lines remain visible"
+      },
+      {
+        "action": "Click 'All Services' toggle",
+        "observed": "Four lines appear (Uber/Lyft/Taxi/Waymo) with distinct colors and legend"
+      },
+      {
+        "action": "Resize to 320px viewport",
+        "observed": "Chart resizes to fit, no horizontal scroll"
+      },
+      {
+        "action": "Hover over data point",
+        "observed": "Tooltip appears with price, time, service, surge info"
+      }
     ]
   },
   "tests": {
     "added": [
-      { "file": "__tests__/components/price-trends-chart.test.tsx", "cases": [
-        { "name": "renders line chart with price data", "verifies": "VAL-DB-001" },
-        { "name": "renders multi-service overlay", "verifies": "VAL-DB-002" },
-        { "name": "shows empty state when no data", "verifies": "VAL-DB-011" },
-        { "name": "renders in dark mode without errors", "verifies": "VAL-DB-009" },
-        { "name": "renders with single data point", "verifies": "VAL-DB-017" }
-      ] }
+      {
+        "file": "__tests__/components/price-trends-chart.test.tsx",
+        "cases": [
+          { "name": "renders line chart with price data", "verifies": "VAL-DB-001" },
+          { "name": "renders multi-service overlay", "verifies": "VAL-DB-002" },
+          { "name": "shows empty state when no data", "verifies": "VAL-DB-011" },
+          { "name": "renders in dark mode without errors", "verifies": "VAL-DB-009" },
+          { "name": "renders with single data point", "verifies": "VAL-DB-017" }
+        ]
+      }
     ]
   },
   "discoveredIssues": []

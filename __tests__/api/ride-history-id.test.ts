@@ -42,7 +42,7 @@ function createDeleteRequest(ip = nextIp()) {
   })
 }
 
-const routeParams = { params: { id: TEST_ENTRY_ID } }
+const routeParams = { params: Promise.resolve({ id: TEST_ENTRY_ID }) }
 
 const mockEntry = {
   id: TEST_ENTRY_ID,
@@ -69,6 +69,25 @@ describe('PATCH /api/ride-history/[id]', () => {
 
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toMatchObject({ error: 'Unauthorized' })
+  })
+
+  it('returns 413 when content-length exceeds 100KB', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
+
+    const request = new NextRequest(BASE_URL, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': '200000',
+        'x-forwarded-for': nextIp(),
+      },
+      body: JSON.stringify({ finalFare: 22.5 }),
+    })
+
+    const response = await PATCH(request, routeParams)
+
+    expect(response.status).toBe(413)
+    await expect(response.json()).resolves.toMatchObject({ error: 'Request body too large' })
   })
 
   it('returns 400 when finalFare is missing', async () => {
@@ -102,7 +121,7 @@ describe('PATCH /api/ride-history/[id]', () => {
 
   it('returns 404 when entry not found (IDOR protection)', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
-    mockUpdateRideHistoryFare.mockResolvedValue(null)
+    mockUpdateRideHistoryFare.mockResolvedValue({ error: 'not_found' })
 
     const response = await PATCH(createPatchRequest({ finalFare: 22.5 }), routeParams)
 
@@ -111,9 +130,21 @@ describe('PATCH /api/ride-history/[id]', () => {
     expect(mockUpdateRideHistoryFare).toHaveBeenCalledWith(TEST_ENTRY_ID, 'user-1', 22.5)
   })
 
+  it('returns 500 when updateRideHistoryFare returns db_error', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
+    mockUpdateRideHistoryFare.mockResolvedValue({ error: 'db_error' })
+
+    const response = await PATCH(createPatchRequest({ finalFare: 22.5 }), routeParams)
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Failed to update ride history fare',
+    })
+  })
+
   it('returns 200 with updated entry on success', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
-    mockUpdateRideHistoryFare.mockResolvedValue(mockEntry as never)
+    mockUpdateRideHistoryFare.mockResolvedValue({ entry: mockEntry } as never)
 
     const response = await PATCH(createPatchRequest({ finalFare: 22.5 }), routeParams)
 
@@ -142,7 +173,7 @@ describe('DELETE /api/ride-history/[id]', () => {
 
   it('returns 404 when entry not found (IDOR protection)', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
-    mockDeleteRideHistory.mockResolvedValue(false)
+    mockDeleteRideHistory.mockResolvedValue('not_found')
 
     const response = await DELETE(createDeleteRequest(), routeParams)
 
@@ -151,9 +182,21 @@ describe('DELETE /api/ride-history/[id]', () => {
     expect(mockDeleteRideHistory).toHaveBeenCalledWith(TEST_ENTRY_ID, 'user-1')
   })
 
+  it('returns 500 when deleteRideHistory returns error', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
+    mockDeleteRideHistory.mockResolvedValue('error')
+
+    const response = await DELETE(createDeleteRequest(), routeParams)
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Failed to delete ride history entry',
+    })
+  })
+
   it('returns 204 with no body on success', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
-    mockDeleteRideHistory.mockResolvedValue(true)
+    mockDeleteRideHistory.mockResolvedValue('deleted')
 
     const response = await DELETE(createDeleteRequest(), routeParams)
 

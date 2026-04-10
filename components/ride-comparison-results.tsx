@@ -19,6 +19,7 @@ import { useAuth } from '@/lib/auth-context'
 import { AuthDialog } from './auth-dialog'
 import ModalPortal from './ModalPortal'
 import { getClientSessionId } from '@/lib/client-session'
+import { API_PATHS } from '@/lib/constants'
 import type { AIRecommendation, RouteAccuracy } from '@/types'
 
 type RideData = {
@@ -288,20 +289,29 @@ export default memo(function RideComparisonResults({
       if (!result) return
 
       const fare = parseFloat(result.price.replace(/\$/g, ''))
-      const waitTimeMinutes = parseInt(result.waitTime)
+      if (isNaN(fare) || fare <= 0) {
+        toast.error('Could not parse fare amount.')
+        return
+      }
+      const waitTimeMinutes = parseInt(result.waitTime, 10)
+      const safeWaitTimeMinutes = isNaN(waitTimeMinutes) ? undefined : waitTimeMinutes
       const surge = result.surgeMultiplier
         ? parseFloat(result.surgeMultiplier.replace(/x/gi, ''))
         : undefined
+      if (surge !== undefined && (isNaN(surge) || surge <= 0)) {
+        toast.error('Could not parse surge multiplier.')
+        return
+      }
 
       try {
-        const response = await fetch('/api/ride-history', {
+        const response = await fetch(API_PATHS.RIDE_HISTORY, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             routeId: routeId ?? undefined,
             service: serviceKey,
             estimatedFare: fare,
-            waitTimeMinutes,
+            waitTimeMinutes: safeWaitTimeMinutes,
             surgeMultiplier: surge,
             comparisonSnapshot: results,
           }),

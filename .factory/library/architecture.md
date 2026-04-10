@@ -27,23 +27,27 @@ User submits comparison request
 ## Key Components
 
 ### Pricing Engine (`lib/pricing.ts`)
+
 - Calculates fares using base fare + distance/time fees + modifiers
 - Modifiers: airport fees, location surcharges, time-based surge, traffic multipliers
 - Returns `PricingBreakdown` with all fee components
 - Confidence scoring (0.5-0.9 range)
 
 ### Ride Comparison Service (`lib/services/ride-comparison.ts`)
+
 - Orchestrator: geocoding → route metrics → parallel pricing → persistence
 - Three-tier in-memory cache (geocode: 5min, route: varies, comparison: 45sec)
 - Precomputed routes bypass external API calls
 
 ### Database Layer
+
 - **Prisma ORM** with PostgreSQL (custom client output at `lib/generated/prisma`)
 - Always import from `@/lib/prisma` — never from generated folder
 - Write operations use `isDatabaseAvailable()` guard + `reportPersistenceError()` — never throw
 - Read failures return fallback values (empty arrays, null)
 
 ### Authentication
+
 - NextAuth.js v5 with JWT sessions (not database sessions)
 - Credentials provider with bcrypt password hashing
 - Custom callbacks inject user ID into session/token
@@ -51,28 +55,33 @@ User submits comparison request
 ## Data Models (key ones for this mission)
 
 ### PriceSnapshot
+
 - Stores historical price data with rich context
 - Fields: final_price, base_price, surge_multiplier, wait_time_minutes, weather_condition, traffic_level, hour_of_day, day_of_week, confidence
 - Indexed on `[routeId, service, createdAt]` — efficient for time-range queries
 
 ### RouteInsights (pre-aggregated)
+
 - Pre-computed hourly patterns per route+service
 - `avgPriceByHour`: JSON object mapping hours (0-23) to average prices
 - `surgeProbabilityByHour`: JSON object mapping hours to surge probability
 - Updated by cron job (`app/api/cron/aggregate-insights/route.ts`)
 
 ### RideHistory
+
 - Tracks rides users actually took from comparison results
 - Includes comparisonSnapshot (full ComparisonResults at booking time)
 - IDOR protection via `{ id, userId }` compound where clause
 
 ### AlertNotification
+
 - Created when price alerts trigger (BELOW/ABOVE threshold)
 - Has `isRead` flag for notification badge tracking
 
 ## API Patterns
 
 All API routes follow these conventions:
+
 - **Auth**: Check session, return 401 if missing
 - **CORS**: Wrapped with `withCors()` for cross-origin support
 - **Rate limiting**: Wrapped with `withRateLimit()` (Upstash Redis)
@@ -93,11 +102,11 @@ All API routes follow these conventions:
 
 ## Caching Strategy
 
-| Cache Type | TTL | Purpose |
-|-----------|-----|---------|
-| Geocode | 5 min | Nominatim results |
-| Route metrics | Varies | OSRM distance/duration |
-| Comparison results | 45 sec | Full API response |
+| Cache Type         | TTL    | Purpose                 |
+| ------------------ | ------ | ----------------------- |
+| Geocode            | 5 min  | Nominatim results       |
+| Route metrics      | Varies | OSRM distance/duration  |
+| Comparison results | 45 sec | Full API response       |
 | Precomputed routes | 30 min | Popular Bay Area routes |
 
 ## Invariants

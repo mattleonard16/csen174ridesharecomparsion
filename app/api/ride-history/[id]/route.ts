@@ -11,7 +11,7 @@ const UpdateFareSchema = z.object({
   finalFare: z.number().positive().max(1000),
 })
 
-type RouteContext = { params: { id: string } }
+type RouteContext = { params: Promise<{ id: string }> }
 
 async function patchHandler(request: NextRequest, id: string) {
   const requestId = getRequestId(request)
@@ -26,6 +26,14 @@ async function patchHandler(request: NextRequest, id: string) {
       )
     }
     userId = session.user.id
+
+    const contentLength = parseInt(request.headers.get('content-length') ?? '0', 10)
+    if (contentLength > 100_000) {
+      return NextResponse.json(
+        { error: 'Request body too large' },
+        { status: 413, headers: createResponseHeaders(requestId) }
+      )
+    }
 
     const body = await request.json()
 
@@ -45,16 +53,22 @@ async function patchHandler(request: NextRequest, id: string) {
 
     const { finalFare } = validation.data
 
-    const updated = await updateRideHistoryFare(id, userId, finalFare)
+    const result = await updateRideHistoryFare(id, userId, finalFare)
 
-    if (!updated) {
+    if ('error' in result) {
+      if (result.error === 'not_found') {
+        return NextResponse.json(
+          { error: 'Ride history entry not found' },
+          { status: 404, headers: createResponseHeaders(requestId) }
+        )
+      }
       return NextResponse.json(
-        { error: 'Ride history entry not found' },
-        { status: 404, headers: createResponseHeaders(requestId) }
+        { error: 'Failed to update ride history fare' },
+        { status: 500, headers: createResponseHeaders(requestId) }
       )
     }
 
-    return NextResponse.json(updated, { headers: createResponseHeaders(requestId) })
+    return NextResponse.json(result.entry, { headers: createResponseHeaders(requestId) })
   } catch (error) {
     logError({
       error: error instanceof Error ? error : new Error('Failed to update ride history fare'),
@@ -84,12 +98,19 @@ async function deleteHandler(request: NextRequest, id: string) {
     }
     userId = session.user.id
 
-    const deleted = await deleteRideHistory(id, userId)
+    const result = await deleteRideHistory(id, userId)
 
-    if (!deleted) {
+    if (result === 'not_found') {
       return NextResponse.json(
         { error: 'Ride history entry not found' },
         { status: 404, headers: createResponseHeaders(requestId) }
+      )
+    }
+
+    if (result === 'error') {
+      return NextResponse.json(
+        { error: 'Failed to delete ride history entry' },
+        { status: 500, headers: createResponseHeaders(requestId) }
       )
     }
 
@@ -109,12 +130,14 @@ async function deleteHandler(request: NextRequest, id: string) {
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  return withCors(withRateLimit((req: NextRequest) => patchHandler(req, params.id)))(request)
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const { id } = await context.params
+  return withCors(withRateLimit((req: NextRequest) => patchHandler(req, id)))(request)
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  return withCors(withRateLimit((req: NextRequest) => deleteHandler(req, params.id)))(request)
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const { id } = await context.params
+  return withCors(withRateLimit((req: NextRequest) => deleteHandler(req, id)))(request)
 }
 
 export const OPTIONS = withCors(
