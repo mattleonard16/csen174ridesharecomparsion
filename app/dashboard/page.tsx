@@ -389,14 +389,21 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Back to Home */}
-        <div className="mt-12 text-center">
+        {/* Navigation */}
+        <div className="mt-12 text-center flex flex-wrap items-center justify-center gap-4">
           <button
             onClick={() => router.push('/')}
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 font-semibold hover-lift"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Home
+          </button>
+          <button
+            onClick={() => router.push('/trends')}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-all duration-200 font-semibold"
+          >
+            <TrendingUp className="w-4 h-4" />
+            Price Trends
           </button>
         </div>
       </div>
