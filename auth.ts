@@ -44,7 +44,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: true,
             name: true,
             image: true,
-            avatarUrl: true,
             password: true,
           },
         })
@@ -62,7 +61,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id,
           email: user.email,
           name: user.name,
-          image: user.image || user.avatarUrl || undefined,
+          image: user.image || undefined,
         }
       },
     }),
