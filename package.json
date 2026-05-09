@@ -2,6 +2,9 @@
   "name": "rideshareappnew",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev",
@@ -14,8 +17,8 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "quality": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
-    "test": "jest",
-    "test:coverage": "jest --coverage --runInBand",
+    "test": "jest --no-watchman",
+    "test:coverage": "jest --no-watchman --coverage --runInBand",
     "test:watch": "jest --watch",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test e2e/home-smoke.spec.ts e2e/nav-smoke.spec.ts",
