@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { DEFAULT_SERVICES } from '@/lib/constants'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import {
   validateInput,
@@ -370,4 +370,4 @@ async function handlePost(request: NextRequest) {
 
 export const GET = withCors(withRateLimit(handleGet))
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(handleGet)
+export const OPTIONS = handleOptions

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { getPriceTrendsSummary } from '@/lib/database-price-trends'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
@@ -94,6 +94,4 @@ async function handleGet(request: NextRequest) {
 }
 
 export const GET = withCors(handleGet)
-export const OPTIONS = withCors(
-  async (_req: NextRequest) => new NextResponse(null, { status: 204 })
-)
+export const OPTIONS = handleOptions

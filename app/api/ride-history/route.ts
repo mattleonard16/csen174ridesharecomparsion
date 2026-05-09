@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { createRideHistory, getRideHistoryForUser, getRideHistoryStats } from '@/lib/database'
 import { auth } from '@/auth'
@@ -136,6 +136,4 @@ async function handleGet(request: NextRequest) {
 
 export const GET = withCors(withRateLimit(handleGet))
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(
-  async (_req: NextRequest) => new NextResponse(null, { status: 204 })
-)
+export const OPTIONS = handleOptions

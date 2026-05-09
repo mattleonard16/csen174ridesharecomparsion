@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { updateRideHistoryFare, deleteRideHistory } from '@/lib/database'
 import { auth } from '@/auth'
@@ -140,6 +140,4 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   return withCors(withRateLimit((req: NextRequest) => deleteHandler(req, id)))(request)
 }
 
-export const OPTIONS = withCors(
-  async (_req: NextRequest) => new NextResponse(null, { status: 204 })
-)
+export const OPTIONS = handleOptions

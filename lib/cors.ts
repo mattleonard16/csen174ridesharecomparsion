@@ -27,7 +27,7 @@ type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
  *   }
  *
  *   export const POST = withCors(handlePost)
- *   export const OPTIONS = withCors(handlePost)
+ *   export const OPTIONS = handleOptions
  *
  * Key design decisions:
  * - All CORS logic in app code, no API gateway
@@ -72,3 +72,7 @@ export function withCors(handler: Handler): Handler {
     return res
   }
 }
+
+export const handleOptions = withCors(
+  async (_req: NextRequest) => new NextResponse(null, { status: 204 })
+)
