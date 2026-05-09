@@ -70,4 +70,24 @@ describe('price-alerts route', () => {
       alertId: 'alert-1',
     })
   })
+
+  it('creates Waymo alerts for authenticated requests', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } } as never)
+    mockCreatePriceAlert.mockResolvedValue({ id: 'alert-waymo' } as never)
+
+    const response = await POST(
+      createRequest(
+        {
+          routeId: 'route-1',
+          targetPrice: 19,
+          service: 'waymo',
+          alertType: 'below',
+        },
+        '10.0.2.4'
+      )
+    )
+
+    expect(response.status).toBe(200)
+    expect(mockCreatePriceAlert).toHaveBeenCalledWith('user-1', 'route-1', 19, 'waymo', 'below')
+  })
 })

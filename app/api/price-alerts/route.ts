@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { createPriceAlert } from '@/lib/database'
 import { auth } from '@/auth'
@@ -10,7 +10,7 @@ import { z } from 'zod'
 const PriceAlertSchema = z.object({
   routeId: z.string().min(1, 'Route ID is required'),
   targetPrice: z.number().positive('Target price must be positive'),
-  service: z.enum(['uber', 'lyft', 'taxi', 'any']).default('any'),
+  service: z.enum(['uber', 'lyft', 'taxi', 'waymo', 'any']).default('any'),
   alertType: z.enum(['below', 'above']).default('below'),
 })
 
@@ -82,3 +82,4 @@ async function handlePost(request: NextRequest) {
 }
 
 export const POST = withCors(withRateLimit(handlePost))
+export const OPTIONS = handleOptions
