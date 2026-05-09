@@ -1,31 +1,79 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import { withCors } from '@/lib/cors'
+import { Ratelimit } from '@upstash/ratelimit'
+import { handleOptions, withCors } from '@/lib/cors'
+import { createResponseHeaders, getRequestId } from '@/lib/api-helpers'
+import { logError } from '@/lib/monitoring'
+import { redis } from '@/lib/redis'
 import { z } from 'zod'
 
 // Per-IP limit: 5 calls/hour per client
 const AI_RATE_LIMIT = parseInt(process.env.OPENAI_RATE_LIMIT ?? '5', 10) || 5
 
-// Global daily cap: 200 calls/day across all users (~$0.018/day max spend)
+// Global daily cap: 200 calls/day across all users (~$0.018/day max spend).
+// Fixed-window resets at the UTC top of the day from the first request of the
+// window; this is approximate, not calendar-midnight aligned.
 const AI_DAILY_CAP = parseInt(process.env.OPENAI_DAILY_CAP ?? '200', 10) || 200
 
-const aiRateTracker = new Map<string, { count: number; resetTime: number }>()
+const aiRateLimiters = redis
+  ? {
+      hourly: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(AI_RATE_LIMIT, '1h'),
+        prefix: 'ratelimit:ai-insights:hourly',
+      }),
+      daily: new Ratelimit({
+        redis,
+        limiter: Ratelimit.fixedWindow(AI_DAILY_CAP, '1d'),
+        prefix: 'ratelimit:ai-insights:daily',
+      }),
+    }
+  : null
 
-// Global daily counter — resets at midnight UTC
-let globalDailyCount = 0
-let globalDailyResetDate = new Date().toISOString().split('T')[0]
+// In-memory fallback used when Upstash Redis is not configured (local dev,
+// preview deploys). Per-process state — fine for single-instance dev, not
+// suitable for multi-instance prod. Prod is expected to have Redis.
+const memoryHourly = new Map<string, { count: number; resetTime: number }>()
+const memoryDaily = { count: 0, resetDate: new Date().toISOString().split('T')[0] }
 
-function checkGlobalDailyCap(): { allowed: boolean } {
+interface LimitOutcome {
+  success: boolean
+  reset: number
+}
+
+function memoryDailyLimit(): LimitOutcome {
   const today = new Date().toISOString().split('T')[0]
-  if (today !== globalDailyResetDate) {
-    globalDailyCount = 0
-    globalDailyResetDate = today
+  if (today !== memoryDaily.resetDate) {
+    memoryDaily.count = 0
+    memoryDaily.resetDate = today
   }
-  if (globalDailyCount >= AI_DAILY_CAP) {
-    return { allowed: false }
+  const tomorrow = new Date()
+  tomorrow.setUTCHours(24, 0, 0, 0)
+  if (memoryDaily.count >= AI_DAILY_CAP) {
+    return { success: false, reset: tomorrow.getTime() }
   }
-  globalDailyCount++
-  return { allowed: true }
+  memoryDaily.count++
+  return { success: true, reset: tomorrow.getTime() }
+}
+
+function memoryHourlyLimit(clientId: string): LimitOutcome {
+  const now = Date.now()
+  const entry = memoryHourly.get(clientId)
+  if (entry && now < entry.resetTime) {
+    if (entry.count >= AI_RATE_LIMIT) {
+      return { success: false, reset: entry.resetTime }
+    }
+    entry.count++
+    return { success: true, reset: entry.resetTime }
+  }
+  const reset = now + 3_600_000
+  memoryHourly.set(clientId, { count: 1, resetTime: reset })
+  if (memoryHourly.size > 5000) {
+    for (const [key, val] of Array.from(memoryHourly.entries())) {
+      if (val.resetTime <= now) memoryHourly.delete(key)
+    }
+  }
+  return { success: true, reset }
 }
 
 function getClientIp(request: Request): string {
@@ -40,28 +88,6 @@ function getClientIp(request: Request): string {
     hash = hash & hash
   }
   return `ai_${Math.abs(hash)}`
-}
-
-function checkAiRateLimit(clientId: string): { allowed: boolean; retryAfter: number } {
-  const now = Date.now()
-  const entry = aiRateTracker.get(clientId)
-
-  if (entry && now < entry.resetTime) {
-    if (entry.count >= AI_RATE_LIMIT) {
-      return { allowed: false, retryAfter: Math.ceil((entry.resetTime - now) / 1000) }
-    }
-    aiRateTracker.set(clientId, { count: entry.count + 1, resetTime: entry.resetTime })
-  } else {
-    aiRateTracker.set(clientId, { count: 1, resetTime: now + 3_600_000 })
-    // Evict old entries periodically
-    if (aiRateTracker.size > 5000) {
-      for (const [key, val] of Array.from(aiRateTracker.entries())) {
-        if (val.resetTime <= now) aiRateTracker.delete(key)
-      }
-    }
-  }
-
-  return { allowed: true, retryAfter: 0 }
 }
 
 const RequestSchema = z.object({
@@ -121,24 +147,65 @@ Services: ${services}.${surgeNote} Current time: ${timeOfDay}.
 Give a 2-3 sentence recommendation: which service to take and why, and any timing advice if surge is active. Be direct, friendly, and specific with prices.`
 }
 
+async function checkLimits(clientId: string): Promise<[LimitOutcome, LimitOutcome]> {
+  if (!aiRateLimiters) {
+    return [memoryDailyLimit(), memoryHourlyLimit(clientId)]
+  }
+  const [daily, hourly] = await Promise.all([
+    aiRateLimiters.daily.limit('global'),
+    aiRateLimiters.hourly.limit(clientId),
+  ])
+  return [
+    { success: daily.success, reset: daily.reset },
+    { success: hourly.success, reset: hourly.reset },
+  ]
+}
+
 async function handlePost(request: NextRequest) {
-  // Check global daily cap first (cheapest check, bounds total spend)
-  if (!checkGlobalDailyCap().allowed) {
+  const requestId = getRequestId(request)
+  const responseHeaders = createResponseHeaders(requestId)
+
+  const clientId = getClientIp(request)
+  let dailyLimit: LimitOutcome
+  let hourlyLimit: LimitOutcome
+
+  try {
+    ;[dailyLimit, hourlyLimit] = await checkLimits(clientId)
+  } catch (error) {
+    logError({
+      error: error instanceof Error ? error : new Error('AI rate limit check failed'),
+      route: 'api/ai-insights.POST',
+      requestId,
+    })
+
     return NextResponse.json(
-      { error: 'AI insights daily limit reached — try again tomorrow' },
-      { status: 429 }
+      { error: 'AI insights temporarily unavailable' },
+      { status: 503, headers: responseHeaders }
     )
   }
 
-  const clientId = getClientIp(request)
-  const { allowed, retryAfter } = checkAiRateLimit(clientId)
+  if (!dailyLimit.success) {
+    return NextResponse.json(
+      { error: 'AI insights daily limit reached — try again tomorrow' },
+      {
+        status: 429,
+        headers: {
+          ...responseHeaders,
+          'Retry-After': Math.ceil((dailyLimit.reset - Date.now()) / 1000).toString(),
+        },
+      }
+    )
+  }
 
-  if (!allowed) {
+  if (!hourlyLimit.success) {
     return NextResponse.json(
       { error: 'AI insights rate limit reached — try again later' },
       {
         status: 429,
-        headers: { 'Retry-After': retryAfter.toString() },
+        headers: {
+          ...responseHeaders,
+          'Retry-After': Math.ceil((hourlyLimit.reset - Date.now()) / 1000).toString(),
+        },
       }
     )
   }
@@ -147,19 +214,28 @@ async function handlePost(request: NextRequest) {
   try {
     body = await request.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Invalid JSON body' },
+      { status: 400, headers: responseHeaders }
+    )
   }
 
   const parsed = RequestSchema.safeParse(body)
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid request data' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Invalid request data' },
+      { status: 400, headers: responseHeaders }
+    )
   }
 
   const { pickup, destination, results, surgeInfo } = parsed.data
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return NextResponse.json({ error: 'AI insights not configured' }, { status: 503 })
+    return NextResponse.json(
+      { error: 'AI insights not configured' },
+      { status: 503, headers: responseHeaders }
+    )
   }
 
   try {
@@ -175,11 +251,19 @@ async function handlePost(request: NextRequest) {
     })
 
     const insight = completion.choices[0]?.message?.content?.trim() ?? ''
-    return NextResponse.json({ insight })
+    return NextResponse.json({ insight }, { headers: responseHeaders })
   } catch (error) {
-    console.error('OpenAI API error:', error)
-    return NextResponse.json({ error: 'AI insights temporarily unavailable' }, { status: 503 })
+    logError({
+      error: error instanceof Error ? error : new Error('OpenAI API error'),
+      route: 'api/ai-insights.POST',
+      requestId,
+    })
+    return NextResponse.json(
+      { error: 'AI insights temporarily unavailable' },
+      { status: 503, headers: responseHeaders }
+    )
   }
 }
 
 export const POST = withCors(handlePost)
+export const OPTIONS = handleOptions
