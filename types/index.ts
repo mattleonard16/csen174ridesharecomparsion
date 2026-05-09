@@ -136,3 +136,45 @@ export interface RideHistoryStats {
   byService: Partial<Record<ServiceType, { count: number; totalSpent: number; avgFare: number }>>
   totalSavings: number
 }
+
+export interface DashboardSavedRoute {
+  id: string
+  routeId: string | null
+  fromName: string
+  toName: string
+  createdAt?: string | Date
+}
+
+export interface DashboardPriceSnapshot {
+  timestamp: string
+  service_type: ServiceType | string
+  final_price: number
+  surge_multiplier: number
+  weather_condition?: string | null
+}
+
+export interface DashboardHourlyAverage {
+  hour: number
+  avg_price: number
+}
+
+export interface DashboardSavingsSummary {
+  totalSavings: number
+  comparisonCount: number
+  recsFollowed: number
+  alertsSet: number
+  unreadAlertCount?: number
+}
+
+export interface DashboardSurgeInsight {
+  hour: number
+  probability: number
+}
+
+export interface DashboardResponse {
+  savedRoutes?: DashboardSavedRoute[]
+  priceHistory?: DashboardPriceSnapshot[]
+  hourlyAverages?: DashboardHourlyAverage[]
+  savings?: DashboardSavingsSummary
+  surgeInsights?: DashboardSurgeInsight[]
+}

@@ -8,30 +8,15 @@ import { PriceTrendsChart } from '@/components/charts/price-trends-chart'
 import { HourlyPriceChart } from '@/components/charts/hourly-price-chart'
 import { SurgeChart } from '@/components/charts/surge-chart'
 import { SavingsSparkline } from '@/components/charts/savings-sparkline'
-
-interface PriceSnapshot {
-  timestamp: string
-  service_type: string
-  final_price: number
-  surge_multiplier: number
-  weather_condition?: string
-}
-
-interface SavedRoute {
-  id: string
-  routeId: string | null
-  fromName: string
-  toName: string
-  createdAt: string
-}
+import type { DashboardHourlyAverage, DashboardPriceSnapshot, DashboardSavedRoute } from '@/types'
 
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([])
+  const [savedRoutes, setSavedRoutes] = useState<DashboardSavedRoute[]>([])
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
-  const [priceData, setPriceData] = useState<PriceSnapshot[]>([])
-  const [hourlyAverages, setHourlyAverages] = useState<any[]>([])
+  const [priceData, setPriceData] = useState<DashboardPriceSnapshot[]>([])
+  const [hourlyAverages, setHourlyAverages] = useState<DashboardHourlyAverage[]>([])
   const [selectedService, setSelectedService] = useState<'uber' | 'lyft' | 'taxi' | 'waymo'>('uber')
   const [dataLoading, setDataLoading] = useState(true)
   const [routesLoading, setRoutesLoading] = useState(true)
