@@ -149,8 +149,10 @@ async function main() {
 
   for (const route of POPULAR_ROUTES) {
     const routeHash = generateRouteHash(
-      route.pickup_lat, route.pickup_lng,
-      route.destination_lat, route.destination_lng
+      route.pickup_lat,
+      route.pickup_lng,
+      route.destination_lat,
+      route.destination_lng
     )
     const created = await prisma.route.upsert({
       where: { route_hash: routeHash },
@@ -170,7 +172,9 @@ async function main() {
       },
     })
     routeIds.push(created.id)
-    console.log(`  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}`)
+    console.log(
+      `  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}`
+    )
   }
 
   // Step 2: Create saved routes (delete existing first to avoid constraint issues)
@@ -191,12 +195,19 @@ async function main() {
         toLng: route.destination_lng,
       },
     })
-    console.log(`  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}`)
+    console.log(
+      `  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}`
+    )
   }
 
   // Step 3: Create price snapshots in batches
   console.log('\nSeeding price snapshots (30 days)...')
-  const services = [ServiceTypeEnum.UBER, ServiceTypeEnum.LYFT, ServiceTypeEnum.TAXI, ServiceTypeEnum.WAYMO]
+  const services = [
+    ServiceTypeEnum.UBER,
+    ServiceTypeEnum.LYFT,
+    ServiceTypeEnum.TAXI,
+    ServiceTypeEnum.WAYMO,
+  ]
   const now = new Date()
 
   for (let i = 0; i < routeIds.length; i++) {
@@ -245,7 +256,9 @@ async function main() {
     }
 
     const result = await prisma.priceSnapshot.createMany({ data: batch })
-    console.log(`  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}: ${result.count} snapshots`)
+    console.log(
+      `  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}: ${result.count} snapshots`
+    )
   }
 
   // Step 4: Create route insights
@@ -263,9 +276,16 @@ async function main() {
       for (let h = 0; h < 24; h++) {
         let avgSurge = 1.05
         let surgeProb = 0.1
-        if (h >= 7 && h <= 9) { avgSurge = 1.5; surgeProb = 0.75 }
-        else if (h >= 17 && h <= 19) { avgSurge = 1.6; surgeProb = 0.85 }
-        else if (h >= 22 || h <= 4) { avgSurge = 1.3; surgeProb = 0.4 }
+        if (h >= 7 && h <= 9) {
+          avgSurge = 1.5
+          surgeProb = 0.75
+        } else if (h >= 17 && h <= 19) {
+          avgSurge = 1.6
+          surgeProb = 0.85
+        } else if (h >= 22 || h <= 4) {
+          avgSurge = 1.3
+          surgeProb = 0.4
+        }
 
         avgPriceByHour[String(h)] = Math.round(basePrice * avgSurge * 100) / 100
         surgeProbabilityByHour[String(h)] = surgeProb
@@ -273,7 +293,12 @@ async function main() {
 
       await prisma.routeInsights.upsert({
         where: { routeId_service: { routeId, service } },
-        update: { avgPriceByHour, surgeProbabilityByHour, sampleSize: 360, lastUpdated: new Date() },
+        update: {
+          avgPriceByHour,
+          surgeProbabilityByHour,
+          sampleSize: 360,
+          lastUpdated: new Date(),
+        },
         create: {
           routeId,
           service,
@@ -287,7 +312,9 @@ async function main() {
         },
       })
     }
-    console.log(`  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}`)
+    console.log(
+      `  ${route.pickup_address.split(',')[0]} -> ${route.destination_address.split(',')[0]}`
+    )
   }
 
   console.log('\nSeed completed!')
