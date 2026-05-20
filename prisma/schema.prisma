@@ -189,6 +189,9 @@ model PriceAlert {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   notifications  AlertNotification[]
+
+  @@index([userId, isActive])
+  @@index([savedRouteId])
 }
 
 model AlertNotification {

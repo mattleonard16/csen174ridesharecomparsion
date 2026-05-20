@@ -28,6 +28,7 @@ type RideData = {
   driversNearby: number
   service: string
   surgeMultiplier?: string
+  confidence?: number
 }
 
 type Results = {
@@ -483,6 +484,13 @@ export default memo(function RideComparisonResults({
         </div>
       )}
 
+      <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+        <strong className="text-foreground">Heads up:</strong> These are model-based estimates from
+        historical fares and current conditions — not live quotes from Uber, Lyft, Waymo, or your
+        local taxi. Real fares vary with surge, route choice, and tolls. Confirm in the provider app
+        before booking.
+      </div>
+
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-normal text-foreground tracking-tight">
@@ -633,6 +641,34 @@ export default memo(function RideComparisonResults({
                     {service.data.price}
                   </div>
                 </div>
+                {(() => {
+                  const confidence = service.data.confidence ?? 0.7
+                  const numericPrice = Number.parseFloat(service.data.price.replace('$', ''))
+                  if (!Number.isFinite(numericPrice) || numericPrice <= 0) return null
+                  const bandPercent = (1 - confidence) * 0.5
+                  const bandDollars = Math.max(1, numericPrice * bandPercent)
+                  const confidenceLabel =
+                    confidence >= 0.8 ? 'High' : confidence >= 0.65 ? 'Medium' : 'Low'
+                  const confidenceColor =
+                    confidence >= 0.8
+                      ? 'text-secondary'
+                      : confidence >= 0.65
+                        ? 'text-muted-foreground'
+                        : 'text-amber-500'
+                  return (
+                    <div className="mt-2 flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground tabular-nums">
+                        ± ${bandDollars.toFixed(bandDollars < 5 ? 2 : 0)} estimate range
+                      </span>
+                      <span
+                        className={`${confidenceColor} font-medium`}
+                        title="Estimate confidence based on surge, traffic, and trip distance"
+                      >
+                        {confidenceLabel} confidence
+                      </span>
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Metrics Grid */}

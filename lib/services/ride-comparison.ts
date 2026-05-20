@@ -776,7 +776,7 @@ function getBackoffDelay(baseMs: number, attempt: number): number {
   return baseMs * (attempt + 1)
 }
 
-function buildRideResult(
+export function buildRideResult(
   service: ServiceType,
   computation: PricingComputation,
   metrics: RouteMetrics
@@ -791,6 +791,7 @@ function buildRideResult(
     driversNearby,
     service: SERVICE_LABELS[service] as RideService,
     surgeMultiplier: surgeMultiplier > 1.05 ? `${surgeMultiplier.toFixed(2)}x` : undefined,
+    confidence: computation.confidence,
   }
 }
 

@@ -30,6 +30,7 @@ export interface RideResult {
   driversNearby: number
   service: RideService
   surgeMultiplier?: string
+  confidence?: number
 }
 
 // Complete comparison results

@@ -1,9 +1,11 @@
 import {
+  buildRideResult,
   compareRidesByAddresses,
   compareRidesByCoordinates,
   resetRideComparisonCaches,
 } from '@/lib/services/ride-comparison'
 import type { Coordinates } from '@/types'
+import type { PricingResult } from '@/lib/pricing'
 
 // Cache mock: maintains an in-process Map that simulates getCached L1 behaviour.
 // The factory runs at module evaluation time — the Map must live inside the factory.
@@ -675,5 +677,54 @@ describe('ride-comparison service', () => {
       const nominatimCalls = mockFetch.mock.calls.filter(call => call[0].includes('nominatim'))
       expect(nominatimCalls.length).toBe(0)
     })
+  })
+})
+
+describe('buildRideResult — confidence propagation', () => {
+  function makePricing(confidence: number): PricingResult {
+    return {
+      price: 24.5,
+      surgeReason: 'normal demand',
+      confidence,
+      breakdown: {
+        baseFare: 3,
+        distanceFee: 10,
+        timeFee: 5,
+        bookingFee: 1,
+        safetyFee: 0,
+        airportFees: 0,
+        locationSurcharge: 0,
+        longRideFee: 0,
+        subtotal: 19,
+        surgeMultiplier: 1,
+        surgeFee: 0,
+        trafficMultiplier: 1,
+        trafficFee: 0,
+        finalFare: 24.5,
+        appliedMinFare: false,
+      },
+    }
+  }
+
+  const metrics = { distanceKm: 8, durationMin: 15 }
+
+  it('passes confidence 0.85 through unchanged', () => {
+    const result = buildRideResult('uber', makePricing(0.85), metrics)
+    expect(result.confidence).toBe(0.85)
+  })
+
+  it('passes confidence 0.7 through unchanged', () => {
+    const result = buildRideResult('lyft', makePricing(0.7), metrics)
+    expect(result.confidence).toBe(0.7)
+  })
+
+  it('passes confidence 0.5 (floor) through unchanged', () => {
+    const result = buildRideResult('taxi', makePricing(0.5), metrics)
+    expect(result.confidence).toBe(0.5)
+  })
+
+  it('does not inject a default — exact value flows through', () => {
+    const result = buildRideResult('waymo', makePricing(0.62), metrics)
+    expect(result.confidence).toBe(0.62)
   })
 })
