@@ -43,8 +43,9 @@ next-env.d.ts
 # SWC compiler cache
 .swc/
 
-# Factory/Agent tooling
-.factory/
+# Factory/Agent tooling (missions and contracts tracked, worktrees ignored)
+.factory/worktrees/
+.factory/cache/
 CONTINUITY.md
 .context/
 
@@ -54,3 +55,33 @@ CONTINUITY.md
 /blob-report/
 /playwright/.cache/
 .env*.local
+
+# ── GSD baseline (auto-generated) ──
+.gsd/activity/
+.gsd/runtime/
+.gsd/worktrees/
+.gsd/auto.lock
+.gsd/metrics.json
+.gsd/STATE.md
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+!.env.example
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+venv/
+target/
+vendor/
+*.log
+coverage/
+.cache/
+tmp/

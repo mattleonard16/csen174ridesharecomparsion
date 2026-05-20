@@ -189,6 +189,9 @@ model PriceAlert {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   notifications  AlertNotification[]
+
+  @@index([userId, isActive])
+  @@index([savedRouteId])
 }
 
 model AlertNotification {
@@ -223,6 +226,9 @@ model RideHistory {
   surgeMultiplier    Float?
   comparisonSnapshot Json
   requestedAt        DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([userId, requestedAt])
 }
 
 model User {
@@ -230,8 +236,7 @@ model User {
   email         String        @unique
   emailVerified DateTime?
   name          String?
-  image         String?       // NextAuth uses 'image' instead of 'avatarUrl'
-  avatarUrl     String?       // Keep for backward compatibility
+  image         String?       // NextAuth profile image
   password      String?       // For credentials provider
   preferredService ServiceType?
   notificationEnabled Boolean @default(true)

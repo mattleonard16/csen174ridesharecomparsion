@@ -104,7 +104,50 @@ describe('RideComparisonResults', () => {
     render(<RideComparisonResults results={mockResults} insights={mockInsights} />)
 
     const prices = screen.getAllByText(/\$\d+\.\d{2}/)
-    expect(prices).toHaveLength(4) // Summary section + 3 service cards
+    // Summary section + 3 service cards + 3 confidence-band "± $X" spans
+    expect(prices).toHaveLength(7)
+  })
+
+  describe('confidence band', () => {
+    function resultsWith(confidence: number | undefined) {
+      return {
+        ...mockResults,
+        uber: { ...mockResults.uber, confidence, price: '$25.50' },
+        lyft: { ...mockResults.lyft, confidence, price: '$23.75' },
+        taxi: { ...mockResults.taxi, confidence, price: '$30.00' },
+      }
+    }
+
+    it('renders "High confidence" for confidence >= 0.8', () => {
+      render(<RideComparisonResults results={resultsWith(0.85)} insights={mockInsights} />)
+      expect(screen.getAllByText(/High confidence/)).toHaveLength(3)
+    })
+
+    it('renders "Medium confidence" for confidence in [0.65, 0.8)', () => {
+      render(<RideComparisonResults results={resultsWith(0.7)} insights={mockInsights} />)
+      expect(screen.getAllByText(/Medium confidence/)).toHaveLength(3)
+    })
+
+    it('renders "Low confidence" for confidence < 0.65', () => {
+      render(<RideComparisonResults results={resultsWith(0.55)} insights={mockInsights} />)
+      expect(screen.getAllByText(/Low confidence/)).toHaveLength(3)
+    })
+
+    it('falls back to Medium (default 0.7) when confidence is undefined', () => {
+      render(<RideComparisonResults results={resultsWith(undefined)} insights={mockInsights} />)
+      expect(screen.getAllByText(/Medium confidence/)).toHaveLength(3)
+    })
+
+    it('clamps the ± band to a minimum of $1', () => {
+      const cheap = {
+        uber: { ...mockResults.uber, price: '$5.00', confidence: 0.85 },
+        lyft: { ...mockResults.lyft, price: '$5.00', confidence: 0.85 },
+        taxi: { ...mockResults.taxi, price: '$5.00', confidence: 0.85 },
+      }
+      render(<RideComparisonResults results={cheap} insights={mockInsights} />)
+      // (1 - 0.85) * 0.5 * 5 = 0.375 → floored to $1.00
+      expect(screen.getAllByText(/± \$1\.00 estimate range/)).toHaveLength(3)
+    })
   })
 
   it('handles edge case with zero drivers nearby', () => {

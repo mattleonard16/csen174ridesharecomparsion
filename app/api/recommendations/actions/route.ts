@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/auth'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { isRedisAvailable, redis } from '@/lib/redis'
 import { logError } from '@/lib/monitoring'
@@ -203,4 +203,4 @@ async function handlePost(request: NextRequest) {
 }
 
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(handlePost)
+export const OPTIONS = handleOptions

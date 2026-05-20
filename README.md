@@ -1,12 +1,13 @@
 # Comparative Rideshares
 
-Compare prices and wait times across Uber, Lyft, and Taxi services in the Bay Area.
+Compare ride prices, wait times, trends, alerts, and recommendations across Uber, Lyft, Taxi, and Waymo in the Bay Area.
 
 ![Landing Page](landing-page.png)
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js **20.x** (enforced via `engines` in `package.json`; CI and Vercel must
+  pin Node 20)
 - npm
 
 ## Getting Started
@@ -106,27 +107,34 @@ To use hot reloading, continue to run `npm run dev` locally outside Docker.
 
 ## Features
 
-- **Real-time surge pricing** with smart time-based multipliers
-- **Best time recommendations** for optimal pricing
-- **ETA sharing** to notify family/friends
-- **Price alerts** for fare drop notifications
-- **Interactive route mapping** with MapLibre GL
-- **Comprehensive comparison** across Uber, Lyft & Taxi
+- **Ride comparison** across Uber, Lyft, Taxi, and Waymo with price, wait time, nearby-driver, surge, and route context
+- **Interactive route mapping** with MapLibre GL, OSRM route geometry, airport detection, and popular-route shortcuts
+- **Dashboard analytics** for saved routes, ride history, service-specific hourly averages, price trends, surge risk, and savings summaries
+- **Price alerts** with per-route targets, alert notifications, and support for all visible ride options
+- **Ride history** to track estimated versus final fares, repeat routes, service choices, and user savings over time
+- **AI recommendations and insights** for service choice, departure timing, surge forecasts, and recommendation actions
+- **Scheduled maintenance and aggregation** through cron routes for cleanup, weather enrichment, and insight aggregation
+- **Production-minded API protections** including validation, CORS, request IDs, reCAPTCHA hooks, rate limiting, and structured error logging
 
 ## Usage
 
 1. Enter pickup location (e.g., "Santa Clara University")
 2. Enter destination (e.g., "San Jose Airport")
-3. Compare real-time prices with surge indicators
-4. Set price alerts or share ETA with contacts
-5. Click to book with your preferred service
+3. Compare services with route, surge, price, wait-time, and recommendation context
+4. Save routes, set price alerts, or record ride history for later analysis
+5. Use the dashboard to review trends, hourly averages, savings, and alerts
 
 ## Technologies Used
 
 - Next.js 14, TypeScript, Tailwind CSS
 - MapLibre GL (via mapcn), OSRM API
-- Prisma ORM, PostgreSQL
+- Prisma ORM, PostgreSQL, Upstash Redis
+- NextAuth.js, reCAPTCHA, OpenAI-powered insights
 - Vercel deployment
+
+## Generated Artifacts
+
+Prisma generates a local client under `lib/generated/prisma`. That directory is ignored by Git, excluded from linting, and should not be inspected or edited during normal feature work. Regenerate it with `npm run db:generate` after schema changes.
 
 ## Testing
 

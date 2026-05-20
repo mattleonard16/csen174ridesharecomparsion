@@ -30,6 +30,7 @@ export interface RideResult {
   driversNearby: number
   service: RideService
   surgeMultiplier?: string
+  confidence?: number
 }
 
 // Complete comparison results
@@ -107,3 +108,74 @@ export interface CommonPlace {
 }
 
 export type CommonPlaces = Record<string, CommonPlace>
+
+export interface RideHistoryEntry {
+  id: string
+  routeId: string | null
+  service: ServiceType
+  estimatedFare: number
+  finalFare: number | null
+  waitTimeMinutes: number | null
+  surgeMultiplier: number | null
+  comparisonSnapshot: ComparisonResults
+  requestedAt: string
+  updatedAt: string
+  pickupAddress?: string
+  destinationAddress?: string
+}
+
+export interface RideHistoryListResponse {
+  history: RideHistoryEntry[]
+  nextCursor: string | null
+  total: number
+}
+
+export interface RideHistoryStats {
+  totalSpent: number
+  rideCount: number
+  avgFare: number
+  byService: Partial<Record<ServiceType, { count: number; totalSpent: number; avgFare: number }>>
+  totalSavings: number
+}
+
+export interface DashboardSavedRoute {
+  id: string
+  routeId: string | null
+  fromName: string
+  toName: string
+  createdAt?: string | Date
+}
+
+export interface DashboardPriceSnapshot {
+  timestamp: string
+  service_type: ServiceType | string
+  final_price: number
+  surge_multiplier: number
+  weather_condition?: string | null
+}
+
+export interface DashboardHourlyAverage {
+  hour: number
+  avg_price: number
+}
+
+export interface DashboardSavingsSummary {
+  totalSavings: number
+  comparisonCount: number
+  recsFollowed: number
+  alertsSet: number
+  unreadAlertCount?: number
+}
+
+export interface DashboardSurgeInsight {
+  hour: number
+  probability: number
+}
+
+export interface DashboardResponse {
+  savedRoutes?: DashboardSavedRoute[]
+  priceHistory?: DashboardPriceSnapshot[]
+  hourlyAverages?: DashboardHourlyAverage[]
+  savings?: DashboardSavingsSummary
+  surgeInsights?: DashboardSurgeInsight[]
+}

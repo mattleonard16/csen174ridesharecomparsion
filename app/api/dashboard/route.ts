@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { withCors } from '@/lib/cors'
-import { withRateLimit } from '@/lib/rate-limiter'
+import { handleOptions, withCors } from '@/lib/cors'
 import { getRoutePriceHistory, getHourlyPriceAverage, getSavedRoutesForUser } from '@/lib/database'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { logError } from '@/lib/monitoring'
 import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
+import type { DashboardResponse, ServiceType } from '@/types'
 
 /**
  * Verify that the user owns the specified route (IDOR protection)
@@ -49,7 +49,7 @@ async function handleGet(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const routeId = searchParams.get('routeId')
-    const service = searchParams.get('service') as 'uber' | 'lyft' | 'taxi' | 'waymo' | null
+    const service = searchParams.get('service') as ServiceType | null
     const daysBack = parseInt(searchParams.get('daysBack') || '7', 10)
     const getSavedRoutes = searchParams.get('savedRoutes') === 'true'
     const getSavings = searchParams.get('savings') === 'true'
@@ -139,38 +139,36 @@ async function handleGet(request: NextRequest) {
 
       const totalSavings = savingsActions.reduce((sum, a) => sum + (a.estimatedSavings ?? 0), 0)
 
-      return NextResponse.json(
-        {
-          savings: {
-            totalSavings,
-            comparisonCount,
-            recsFollowed: savingsActions.length,
-            alertsSet,
-            unreadAlertCount,
-          },
-          surgeInsights: surgeInsightsRaw,
+      const response: DashboardResponse = {
+        savings: {
+          totalSavings,
+          comparisonCount,
+          recsFollowed: savingsActions.length,
+          alertsSet,
+          unreadAlertCount,
         },
-        { headers: createResponseHeaders(requestId) }
-      )
+        surgeInsights: surgeInsightsRaw,
+      }
+
+      return NextResponse.json(response, { headers: createResponseHeaders(requestId) })
     }
 
     // If requesting saved routes, return them
     if (getSavedRoutes) {
       const savedRoutes = await getSavedRoutesForUser(session.user.id)
-      return NextResponse.json({ savedRoutes }, { headers: createResponseHeaders(requestId) })
+      const response: DashboardResponse = { savedRoutes }
+      return NextResponse.json(response, { headers: createResponseHeaders(requestId) })
     }
 
     // If no routeId, return saved routes so the user can select one
     if (!routeId) {
       const savedRoutes = await getSavedRoutesForUser(session.user.id)
-      return NextResponse.json(
-        {
-          savedRoutes,
-          priceHistory: [],
-          hourlyAverages: [],
-        },
-        { headers: createResponseHeaders(requestId) }
-      )
+      const response: DashboardResponse = {
+        savedRoutes,
+        priceHistory: [],
+        hourlyAverages: [],
+      }
+      return NextResponse.json(response, { headers: createResponseHeaders(requestId) })
     }
 
     // SECURITY: Verify user owns this route before accessing price data (IDOR protection)
@@ -203,13 +201,12 @@ async function handleGet(request: NextRequest) {
       service ? getHourlyPriceAverage(routeId, service) : Promise.resolve([]),
     ])
 
-    return NextResponse.json(
-      {
-        priceHistory,
-        hourlyAverages,
-      },
-      { headers: createResponseHeaders(requestId) }
-    )
+    const response: DashboardResponse = {
+      priceHistory,
+      hourlyAverages,
+    }
+
+    return NextResponse.json(response, { headers: createResponseHeaders(requestId) })
   } catch (error) {
     logError({
       error: error instanceof Error ? error : new Error('Failed to fetch dashboard data'),
@@ -225,5 +222,5 @@ async function handleGet(request: NextRequest) {
   }
 }
 
-export const GET = withCors(withRateLimit(handleGet))
-export const OPTIONS = withCors(handleGet)
+export const GET = withCors(handleGet)
+export const OPTIONS = handleOptions

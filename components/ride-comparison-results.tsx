@@ -9,6 +9,7 @@ import {
   TrendingDown,
   Minus,
   BarChart3,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useState, memo, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -18,6 +19,7 @@ import { useAuth } from '@/lib/auth-context'
 import { AuthDialog } from './auth-dialog'
 import ModalPortal from './ModalPortal'
 import { getClientSessionId } from '@/lib/client-session'
+import { API_PATHS } from '@/lib/constants'
 import type { AIRecommendation, RouteAccuracy } from '@/types'
 
 type RideData = {
@@ -26,6 +28,7 @@ type RideData = {
   driversNearby: number
   service: string
   surgeMultiplier?: string
+  confidence?: number
 }
 
 type Results = {
@@ -101,6 +104,7 @@ export default memo(function RideComparisonResults({
   const [showPriceAlert, setShowPriceAlert] = useState(false)
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [routeSaved, setRouteSaved] = useState(false)
+  const [loggedServices, setLoggedServices] = useState<Set<string>>(new Set())
 
   // Memoize services array first (used by handlers below)
   const services = useMemo(() => {
@@ -276,6 +280,53 @@ export default memo(function RideComparisonResults({
     }
   }, [user, routeId, pickup, destination])
 
+  const handleLogRide = useCallback(
+    async (serviceKey: string) => {
+      if (!user) {
+        setShowAuthDialog(true)
+        return
+      }
+      const result = results[serviceKey as keyof Results]
+      if (!result) return
+
+      const fare = parseFloat(result.price.replace(/\$/g, ''))
+      if (isNaN(fare) || fare <= 0) {
+        toast.error('Could not parse fare amount.')
+        return
+      }
+      const waitTimeMinutes = parseInt(result.waitTime, 10)
+      const safeWaitTimeMinutes = isNaN(waitTimeMinutes) ? undefined : waitTimeMinutes
+      const surge = result.surgeMultiplier
+        ? parseFloat(result.surgeMultiplier.replace(/x/gi, ''))
+        : undefined
+      if (surge !== undefined && (isNaN(surge) || surge <= 0)) {
+        toast.error('Could not parse surge multiplier.')
+        return
+      }
+
+      try {
+        const response = await fetch(API_PATHS.RIDE_HISTORY, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            routeId: routeId ?? undefined,
+            service: serviceKey,
+            estimatedFare: fare,
+            waitTimeMinutes: safeWaitTimeMinutes,
+            surgeMultiplier: surge,
+            comparisonSnapshot: results,
+          }),
+        })
+        if (!response.ok) throw new Error('Failed to log ride')
+        setLoggedServices(prev => new Set([...Array.from(prev), serviceKey]))
+        toast.success('Ride logged!')
+      } catch {
+        toast.error('Failed to log ride')
+      }
+    },
+    [user, routeId, results]
+  )
+
   const handleSetPriceAlert = useCallback(
     async (threshold: number) => {
       if (!user) {
@@ -433,6 +484,13 @@ export default memo(function RideComparisonResults({
         </div>
       )}
 
+      <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+        <strong className="text-foreground">Heads up:</strong> These are model-based estimates from
+        historical fares and current conditions — not live quotes from Uber, Lyft, Waymo, or your
+        local taxi. Real fares vary with surge, route choice, and tolls. Confirm in the provider app
+        before booking.
+      </div>
+
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-normal text-foreground tracking-tight">
@@ -583,6 +641,34 @@ export default memo(function RideComparisonResults({
                     {service.data.price}
                   </div>
                 </div>
+                {(() => {
+                  const confidence = service.data.confidence ?? 0.7
+                  const numericPrice = Number.parseFloat(service.data.price.replace('$', ''))
+                  if (!Number.isFinite(numericPrice) || numericPrice <= 0) return null
+                  const bandPercent = (1 - confidence) * 0.5
+                  const bandDollars = Math.max(1, numericPrice * bandPercent)
+                  const confidenceLabel =
+                    confidence >= 0.8 ? 'High' : confidence >= 0.65 ? 'Medium' : 'Low'
+                  const confidenceColor =
+                    confidence >= 0.8
+                      ? 'text-secondary'
+                      : confidence >= 0.65
+                        ? 'text-muted-foreground'
+                        : 'text-amber-500'
+                  return (
+                    <div className="mt-2 flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground tabular-nums">
+                        ± ${bandDollars.toFixed(bandDollars < 5 ? 2 : 0)} estimate range
+                      </span>
+                      <span
+                        className={`${confidenceColor} font-medium`}
+                        title="Estimate confidence based on surge, traffic, and trip distance"
+                      >
+                        {confidenceLabel} confidence
+                      </span>
+                    </div>
+                  )
+                })()}
               </div>
 
               {/* Metrics Grid */}
@@ -633,6 +719,25 @@ export default memo(function RideComparisonResults({
                 >
                   <Share2 className="h-4 w-4 group-hover:text-primary transition-colors" />
                   Share ETA
+                </button>
+
+                <button
+                  onClick={() => handleLogRide(service.name.toLowerCase())}
+                  disabled={loggedServices.has(service.name.toLowerCase())}
+                  className={`w-full py-2 px-4 text-sm transition-colors flex items-center justify-center gap-2 group ${
+                    loggedServices.has(service.name.toLowerCase())
+                      ? 'text-muted-foreground/50 cursor-default'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <ClipboardCheck
+                    className={`h-4 w-4 transition-colors ${
+                      loggedServices.has(service.name.toLowerCase())
+                        ? 'text-secondary'
+                        : 'group-hover:text-secondary'
+                    }`}
+                  />
+                  {loggedServices.has(service.name.toLowerCase()) ? 'Logged' : 'I took this ride'}
                 </button>
               </div>
             </div>

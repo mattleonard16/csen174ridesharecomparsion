@@ -264,3 +264,11 @@ export const UI_CONFIG = {
   MAX_SUGGESTIONS: 5,
   LOADING_TIMEOUT: 10000, // 10 seconds
 } as const
+
+// Ride history API paths
+export const API_PATHS = {
+  RIDE_HISTORY: '/api/ride-history',
+  RIDE_HISTORY_ANALYTICS: (daysBack = 30) =>
+    `/api/ride-history?analytics=true&daysBack=${daysBack}`,
+  RIDE_HISTORY_ENTRY: (id: string) => `/api/ride-history/${id}`,
+} as const

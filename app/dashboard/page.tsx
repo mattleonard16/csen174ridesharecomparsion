@@ -3,31 +3,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useRouter } from 'next/navigation'
-import { TrendingDown, Clock, Zap, ArrowLeft, BarChart3, MapPin } from 'lucide-react'
-
-interface PriceSnapshot {
-  timestamp: string
-  service_type: string
-  final_price: number
-  surge_multiplier: number
-  weather_condition?: string
-}
-
-interface SavedRoute {
-  id: string
-  routeId: string | null
-  fromName: string
-  toName: string
-  createdAt: string
-}
+import { TrendingDown, Clock, Zap, ArrowLeft, BarChart3, MapPin, TrendingUp } from 'lucide-react'
+import { PriceTrendsChart } from '@/components/charts/price-trends-chart'
+import { HourlyPriceChart } from '@/components/charts/hourly-price-chart'
+import { SurgeChart } from '@/components/charts/surge-chart'
+import { SavingsSparkline } from '@/components/charts/savings-sparkline'
+import type { DashboardHourlyAverage, DashboardPriceSnapshot, DashboardSavedRoute } from '@/types'
 
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([])
+  const [savedRoutes, setSavedRoutes] = useState<DashboardSavedRoute[]>([])
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
-  const [priceData, setPriceData] = useState<PriceSnapshot[]>([])
-  const [hourlyAverages, setHourlyAverages] = useState<any[]>([])
+  const [priceData, setPriceData] = useState<DashboardPriceSnapshot[]>([])
+  const [hourlyAverages, setHourlyAverages] = useState<DashboardHourlyAverage[]>([])
   const [selectedService, setSelectedService] = useState<'uber' | 'lyft' | 'taxi' | 'waymo'>('uber')
   const [dataLoading, setDataLoading] = useState(true)
   const [routesLoading, setRoutesLoading] = useState(true)
@@ -283,47 +272,7 @@ export default function DashboardPage() {
                 </div>
                 <h2 className="text-xl font-bold text-foreground">7-Day Price Trends</h2>
               </div>
-              {priceData.length > 0 ? (
-                <div className="space-y-3">
-                  {priceData.slice(0, 10).map((snapshot, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                    >
-                      <div>
-                        <div className="font-bold text-foreground">
-                          ${snapshot.final_price.toFixed(2)}
-                        </div>
-                        <div className="text-sm text-muted-foreground" suppressHydrationWarning>
-                          {new Date(snapshot.timestamp).toLocaleDateString()} at{' '}
-                          {new Date(snapshot.timestamp).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        {snapshot.surge_multiplier > 1 && (
-                          <div className="text-sm font-medium text-primary">
-                            {snapshot.surge_multiplier}x surge
-                          </div>
-                        )}
-                        {snapshot.weather_condition && (
-                          <div className="text-xs text-muted-foreground">
-                            {snapshot.weather_condition}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                  <p>No price data available yet.</p>
-                  <p className="text-sm mt-2">Start comparing rides to see trends!</p>
-                </div>
-              )}
+              <PriceTrendsChart data={priceData} loading={dataLoading} />
             </div>
 
             {/* Hourly Averages Card */}
@@ -334,29 +283,7 @@ export default function DashboardPage() {
                 </div>
                 <h2 className="text-xl font-bold text-foreground">Best Times to Ride</h2>
               </div>
-              {hourlyAverages.length > 0 ? (
-                <div className="space-y-2">
-                  {hourlyAverages.map((avg, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-3 hover:bg-muted rounded-lg transition-colors"
-                    >
-                      <div className="text-muted-foreground">
-                        {avg.hour}:00 - {avg.hour + 1}:00
-                      </div>
-                      <div className="font-bold text-foreground">
-                        ${avg.avg_price?.toFixed(2) || 'N/A'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Clock className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                  <p>No hourly data available yet.</p>
-                  <p className="text-sm mt-2">More data needed for analysis.</p>
-                </div>
-              )}
+              <HourlyPriceChart data={hourlyAverages} loading={dataLoading} />
             </div>
 
             {/* Surge Insights Card */}
@@ -368,35 +295,7 @@ export default function DashboardPage() {
                 <h2 className="text-xl font-bold text-foreground">Surge Insights</h2>
               </div>
               {surgeInsights.length > 0 ? (
-                <div className="space-y-3">
-                  {surgeInsights.map((insight, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/30"
-                    >
-                      <span className="text-sm text-muted-foreground">
-                        {insight.hour}:00 - {insight.hour + 1}:00
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              insight.probability > 0.7
-                                ? 'bg-destructive'
-                                : insight.probability > 0.4
-                                  ? 'bg-amber-500'
-                                  : 'bg-secondary'
-                            }`}
-                            style={{ width: `${insight.probability * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-foreground w-10 text-right">
-                          {(insight.probability * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <SurgeChart data={surgeInsights} loading={dataLoading} />
               ) : (
                 <div className="space-y-4">
                   <div className="p-4 bg-secondary/10 border border-secondary/20 rounded-lg">
@@ -430,7 +329,7 @@ export default function DashboardPage() {
                 <h2 className="text-xl font-bold text-foreground">Your Savings</h2>
               </div>
               <div className="space-y-6">
-                <div className="text-center py-6">
+                <div className="text-center py-4">
                   <div className="text-5xl font-black text-secondary mb-2">
                     ${savingsData.totalSavings.toFixed(2)}
                   </div>
@@ -445,6 +344,17 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
+                {savingsData.totalSavings > 0 && (
+                  <SavingsSparkline
+                    data={[
+                      savingsData.totalSavings * 0.2,
+                      savingsData.totalSavings * 0.4,
+                      savingsData.totalSavings * 0.6,
+                      savingsData.totalSavings * 0.8,
+                      savingsData.totalSavings,
+                    ]}
+                  />
+                )}
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
                   <div className="text-center">
                     <div className="text-3xl font-black text-foreground">
@@ -464,14 +374,21 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Back to Home */}
-        <div className="mt-12 text-center">
+        {/* Navigation */}
+        <div className="mt-12 text-center flex flex-wrap items-center justify-center gap-4">
           <button
             onClick={() => router.push('/')}
             className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-200 font-semibold hover-lift"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Home
+          </button>
+          <button
+            onClick={() => router.push('/trends')}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-all duration-200 font-semibold"
+          >
+            <TrendingUp className="w-4 h-4" />
+            Price Trends
           </button>
         </div>
       </div>

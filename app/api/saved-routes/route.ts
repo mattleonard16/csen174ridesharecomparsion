@@ -1,24 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/auth'
-import { withCors } from '@/lib/cors'
+import { handleOptions, withCors } from '@/lib/cors'
 import { withRateLimit } from '@/lib/rate-limiter'
 import { saveRouteForUser } from '@/lib/database'
+import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 
 const SaveRouteSchema = z.object({
   routeId: z.string().min(1, 'routeId is required'),
   nickname: z.string().max(120).optional(),
 })
-
-function getRequestId(request: NextRequest): string {
-  return request.headers.get('x-request-id') ?? crypto.randomUUID()
-}
-
-function createResponseHeaders(requestId: string): Record<string, string> {
-  return {
-    'x-request-id': requestId,
-  }
-}
 
 async function handlePost(request: NextRequest) {
   const requestId = getRequestId(request)
@@ -68,4 +59,4 @@ async function handlePost(request: NextRequest) {
 }
 
 export const POST = withCors(withRateLimit(handlePost))
-export const OPTIONS = withCors(handlePost)
+export const OPTIONS = handleOptions

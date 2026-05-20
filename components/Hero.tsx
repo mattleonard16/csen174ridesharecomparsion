@@ -24,20 +24,21 @@ export default function Hero() {
           <div className="animate-fade-in-up">
             <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-normal mb-8 leading-[1.1] tracking-tight text-foreground">
               <span className="block animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                Compare rides.
+                Know the fare
               </span>
               <span className="block animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-                Save money.
+                before you
               </span>
               <span className="block animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
-                Travel <span className="text-accent-gradient">smarter</span>.
+                open <span className="text-accent-gradient">the app</span>.
               </span>
             </h1>
           </div>
 
           <div className="animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
             <p className="text-lg sm:text-xl text-muted-foreground mb-8 max-w-xl mx-auto font-sans leading-relaxed tracking-wide">
-              Real-time fare comparison across Uber, Lyft, and Taxi services in the Bay Area.
+              Side-by-side fare estimates across Uber, Lyft, Waymo, and Taxi for any Bay Area route
+              — built on real historical pricing data, surge patterns, and live traffic.
             </p>
 
             {/* Decorative Accent Line */}
@@ -72,10 +73,10 @@ export default function Hero() {
               style={{ animationDelay: '0.2s' }}
             >
               <div className="font-display text-3xl sm:text-4xl text-foreground mb-1 tabular-nums">
-                40%
+                4
               </div>
               <div className="font-sans text-sm text-muted-foreground tracking-wide">
-                Average Savings
+                Services Compared
               </div>
             </div>
 
@@ -85,10 +86,10 @@ export default function Hero() {
               style={{ animationDelay: '0.4s' }}
             >
               <div className="font-display text-3xl sm:text-4xl text-foreground mb-1 tabular-nums">
-                3
+                30d
               </div>
               <div className="font-sans text-sm text-muted-foreground tracking-wide">
-                Services Compared
+                Price History
               </div>
             </div>
 
@@ -98,10 +99,10 @@ export default function Hero() {
               style={{ animationDelay: '0.6s' }}
             >
               <div className="font-display text-3xl sm:text-4xl text-foreground mb-1 tabular-nums">
-                &lt;200ms
+                Free
               </div>
               <div className="font-sans text-sm text-muted-foreground tracking-wide">
-                Response Time
+                No Sign-up Required
               </div>
             </div>
           </div>
