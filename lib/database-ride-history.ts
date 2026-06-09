@@ -3,9 +3,8 @@
  * Handles creation, retrieval, update, and deletion of user ride history records.
  */
 
-import { Prisma } from '@/lib/generated/prisma'
 import { prisma } from '@/lib/prisma'
-import { isDatabaseAvailable, reportPersistenceError } from './database-logging'
+import { isDatabaseAvailable, isPrismaNotFound, reportPersistenceError } from './database-logging'
 import { mapServiceToEnum, mapEnumToService } from './service-mappings'
 import type {
   ServiceType,
@@ -270,23 +269,6 @@ export async function getRideHistoryStats(
 // ============================================================================
 // Mutation Operations
 // ============================================================================
-
-/**
- * Returns true when the error is a Prisma P2025 "record not found" error.
- * Handles both real PrismaClientKnownRequestError instances and duck-typed objects
- * (e.g. plain Errors with a `.code` property, as emitted by some Prisma adapters).
- */
-function isPrismaNotFound(error: unknown): boolean {
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return error.code === 'P2025'
-  }
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code: unknown }).code === 'P2025'
-  )
-}
 
 /**
  * Update the final fare for a ride history entry.
