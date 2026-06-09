@@ -8,7 +8,7 @@
  */
 
 import { redis } from '@/lib/redis'
-import { log } from '@/lib/monitoring'
+import { log, logError } from '@/lib/monitoring'
 
 interface CacheEntry<T> {
   value: T
@@ -117,11 +117,17 @@ export async function getCached<T>(
  * Atomic daily quota counter using Redis INCR + EXPIREAT.
  *
  * On count === 1 (first increment of the day), sets EXPIREAT to next midnight UTC.
- * Returns 0 when redis is null or on any error (fail-open: allows AI calls to proceed).
+ *
+ * Degraded-Redis policy:
+ * - Development: returns 0 (fail-open) so local work without Upstash keeps AI paths usable.
+ * - Production: returns Infinity (fail-closed) so every `count <= quota` check fails and
+ *   callers take their template fallback — the quota cannot be bypassed by knocking Redis over.
  */
 export async function incrementQuotaCounter(key: string): Promise<number> {
+  const failClosed = process.env.NODE_ENV === 'production'
+
   if (!redis) {
-    return 0
+    return failClosed ? Number.POSITIVE_INFINITY : 0
   }
 
   try {
@@ -140,8 +146,15 @@ export async function incrementQuotaCounter(key: string): Promise<number> {
     }
 
     return count
-  } catch {
-    // Redis failure — return 0 to allow calls (fail open)
+  } catch (error) {
+    if (failClosed) {
+      logError({
+        error: error instanceof Error ? error : new Error('Quota counter Redis failure'),
+        context: 'incrementQuotaCounter fail-closed',
+        quotaKey: key,
+      })
+      return Number.POSITIVE_INFINITY
+    }
     return 0
   }
 }

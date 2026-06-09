@@ -31,3 +31,15 @@ if (process.env.NODE_ENV === 'development') {
     console.debug('Redis not configured - using in-memory rate limiting (resets on restart)')
   }
 }
+
+/**
+ * Running production without Redis means rate limits and quotas are tracked
+ * per serverless instance — effectively unenforced under multi-instance load.
+ * Deploys keep working, but make the degradation loud.
+ */
+if (process.env.NODE_ENV === 'production' && !isRedisConfigured) {
+  console.warn(
+    '[redis] UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN not set — ' +
+      'rate limiting and AI quotas fall back to per-instance in-memory tracking'
+  )
+}

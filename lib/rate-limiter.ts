@@ -9,9 +9,11 @@
  * Falls back to in-memory storage when Redis is not configured or fails.
  */
 
+import { createHash } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { Ratelimit } from '@upstash/ratelimit'
 import { redis, isRedisAvailable } from './redis'
+import { logError } from './monitoring'
 
 /**
  * Parse environment variable as integer with validation
@@ -90,18 +92,12 @@ function getClientId(request: Request): string {
   const userAgent = request.headers.get('user-agent') || 'unknown'
   const acceptLanguage = request.headers.get('accept-language') || 'unknown'
 
-  // Create a simple hash of identifying characteristics
   const identifier = forwardedFor || realIp || `${userAgent}-${acceptLanguage}`
 
-  // Simple hash function for consistent client identification
-  let hash = 0
-  for (let i = 0; i < identifier.length; i++) {
-    const char = identifier.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32-bit integer
-  }
-
-  return `client_${Math.abs(hash)}`
+  // SHA-256 keeps the ID stable without storing raw IPs; a 32-bit additive hash
+  // collides easily enough for one client to consume another's bucket
+  const hash = createHash('sha256').update(identifier).digest('hex').slice(0, 16)
+  return `client_${hash}`
 }
 
 /**
@@ -243,6 +239,12 @@ function checkRateLimitInMemory(clientId: string): {
 /**
  * Check if request should be rate limited
  * Uses Redis when available, falls back to in-memory storage
+ *
+ * Degraded-Redis policy: when Redis is configured but errors at runtime,
+ * production fails closed (deny) — per-instance in-memory buckets are
+ * trivially bypassed across serverless instances, so falling back would
+ * disable the limit exactly when infrastructure is degraded. Development
+ * keeps the in-memory fallback.
  */
 export async function checkRateLimit(request: Request): Promise<{
   allowed: boolean
@@ -257,7 +259,19 @@ export async function checkRateLimit(request: Request): Promise<{
       const result = await checkRateLimitRedis(clientId)
       usingInMemoryFallback = false // Redis is working
       return result
-    } catch {
+    } catch (error) {
+      if (process.env.NODE_ENV === 'production') {
+        logError({
+          error: error instanceof Error ? error : new Error('Redis rate limit check failed'),
+          context: 'checkRateLimit fail-closed',
+        })
+        return {
+          allowed: false,
+          remainingRequests: 0,
+          resetTime: Date.now() + 60_000,
+          reason: 'Rate limiting temporarily unavailable',
+        }
+      }
       usingInMemoryFallback = true // Mark that we fell back to in-memory
     }
   }
