@@ -35,10 +35,10 @@ Five independent work items, ordered by risk reduction per effort. Each lands as
 
 **Policy** (applies to all three touch points):
 
-| Condition | Development | Production |
-| --- | --- | --- |
-| Redis not configured (env vars missing) | In-memory fallback, debug log | In-memory fallback + loud startup warning (deploys without Upstash keep working, visibly) |
-| Redis configured but **errors at runtime** | In-memory fallback | **Fail closed** (deny the request / treat quota as exceeded) + `logError` |
+| Condition                                  | Development                   | Production                                                                                |
+| ------------------------------------------ | ----------------------------- | ----------------------------------------------------------------------------------------- |
+| Redis not configured (env vars missing)    | In-memory fallback, debug log | In-memory fallback + loud startup warning (deploys without Upstash keep working, visibly) |
+| Redis configured but **errors at runtime** | In-memory fallback            | **Fail closed** (deny the request / treat quota as exceeded) + `logError`                 |
 
 The distinction already exists in code: `lib/redis.ts:9-11` detects configuration (`isRedisConfigured`), and runtime errors surface as thrown exceptions in the existing `try/catch` blocks. The repo's established prod/dev pattern is `process.env.NODE_ENV === 'production'` (see `lib/monitoring.ts:16`, `lib/database-logging.ts:5`).
 
@@ -84,7 +84,7 @@ The distinction already exists in code: `lib/redis.ts:9-11` detects configuratio
 
    This throttles credentials sign-in attempts at the existing burst (3/10s) + hourly (50/h) limits per client. GET (session reads, CSRF token, providers) stays unthrottled — it's called on every page load by `SessionProvider` and would exhaust the budget instantly. Verify `withRateLimit`'s handler signature matches NextAuth's exported handler (both are `(req: Request) => Promise<Response>`-compatible; confirm the wrapper preserves the second route-context argument if present).
 
-2. **`auth.ts:8-11`** — leave the sign-in schema at `min(1)`. Raising it would lock out any existing user with a short password while adding no security (sign-in validation doesn't constrain what's stored). Instead, add a shared password policy where passwords are *created*:
+2. **`auth.ts:8-11`** — leave the sign-in schema at `min(1)`. Raising it would lock out any existing user with a short password while adding no security (sign-in validation doesn't constrain what's stored). Instead, add a shared password policy where passwords are _created_:
    - New `lib/password-policy.ts`: exported Zod schema — `z.string().min(8).max(128)` plus a not-only-whitespace refinement. Deliberately no composition rules (NIST 800-63B discourages them); length + rate limiting is the defense.
    - Apply it in `scripts/create-test-user.ts` (currently the only place passwords are hashed, at line 9).
    - **Decision needed (flagged, not blocking):** public self-serve signup is a product decision. If/when wanted, it's a new `app/api/auth/register/route.ts` using `withCors(withRateLimit(handler))`, the shared policy schema, and `bcrypt.hash(password, 12)`. This plan ships the policy module and protects sign-in; it does not add public registration.
@@ -154,13 +154,13 @@ The distinction already exists in code: `lib/redis.ts:9-11` detects configuratio
 
 ## Implementation Order & Estimates
 
-| # | Item | Risk closed | Size |
-| --- | --- | --- | --- |
-| 1 | Fail-closed quota & rate limiting | Abuse/cost control bypass under degraded Redis | M (~half day incl. tests) |
-| 2 | Auth rate limiting + password policy module | Brute-force sign-in | S |
-| 3 | Ownership helper consolidation + alert DELETE | Drift in security code; orphaned alerts | S |
-| 4 | Cron schedules | Stale insights feeding recommendations | XS |
-| 5 | ESLint pin + CORS cleanup | Tooling correctness | XS |
+| #   | Item                                          | Risk closed                                    | Size                      |
+| --- | --------------------------------------------- | ---------------------------------------------- | ------------------------- |
+| 1   | Fail-closed quota & rate limiting             | Abuse/cost control bypass under degraded Redis | M (~half day incl. tests) |
+| 2   | Auth rate limiting + password policy module   | Brute-force sign-in                            | S                         |
+| 3   | Ownership helper consolidation + alert DELETE | Drift in security code; orphaned alerts        | S                         |
+| 4   | Cron schedules                                | Stale insights feeding recommendations         | XS                        |
+| 5   | ESLint pin + CORS cleanup                     | Tooling correctness                            | XS                        |
 
 All items are independent; 4 and 5 can land immediately. Sequence 1 → 2 → 3 for the code changes since 2 and 3 build on patterns touched in 1 (`withRateLimit`, test mocks).
 

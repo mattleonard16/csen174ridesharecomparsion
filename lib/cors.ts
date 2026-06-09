@@ -9,9 +9,15 @@ import { NextRequest, NextResponse } from 'next/server'
  *
  * No wildcard (*) - this is not a public API.
  */
-const allowedOrigins = ['http://localhost:3000', process.env.NEXT_PUBLIC_APP_URL || ''].filter(
-  Boolean
+const allowedOrigins = ['http://localhost:3000', process.env.NEXT_PUBLIC_APP_URL].filter(
+  (origin): origin is string => Boolean(origin)
 )
+
+// Without NEXT_PUBLIC_APP_URL the allowlist is localhost-only, so all
+// cross-origin production traffic gets no CORS headers — flag it loudly.
+if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_APP_URL) {
+  console.warn('[cors] NEXT_PUBLIC_APP_URL not set — CORS allowlist contains only localhost')
+}
 
 type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
 
@@ -45,7 +51,7 @@ export function withCors(handler: Handler): Handler {
       if (isAllowed) {
         preflight.headers.set('Access-Control-Allow-Origin', origin)
       }
-      preflight.headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+      preflight.headers.set('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
       preflight.headers.set(
         'Access-Control-Allow-Headers',
         'Content-Type, Authorization, x-session-id, x-user-id'
@@ -62,7 +68,7 @@ export function withCors(handler: Handler): Handler {
     if (isAllowed) {
       res.headers.set('Access-Control-Allow-Origin', origin)
     }
-    res.headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    res.headers.set('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
     res.headers.set(
       'Access-Control-Allow-Headers',
       'Content-Type, Authorization, x-session-id, x-user-id'
