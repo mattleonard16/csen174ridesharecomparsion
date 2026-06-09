@@ -307,9 +307,6 @@ export function cleanupRateLimiters(): void {
   })
 }
 
-// Handler type for middleware
-type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
-
 /**
  * Rate limiting middleware wrapper
  *
@@ -322,8 +319,13 @@ type Handler = (req: NextRequest) => Promise<NextResponse> | NextResponse
  *   }
  *
  *   export const POST = withCors(withRateLimit(handlePost))
+ *
+ * Generic over the response type so it can also wrap handlers that return a
+ * plain Response (e.g. NextAuth's handlers.POST).
  */
-export function withRateLimit(handler: Handler): Handler {
+export function withRateLimit<T extends Response>(
+  handler: (req: NextRequest) => Promise<T> | T
+): (req: NextRequest) => Promise<T | NextResponse> {
   return async (req: NextRequest) => {
     const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID()
 
