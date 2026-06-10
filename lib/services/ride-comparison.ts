@@ -7,6 +7,7 @@ import { getBestTimeRecommendations, getTimeBasedMultiplier, pricingEngine } fro
 import { sanitizeString } from '@/lib/validation'
 import { findPrecomputedRouteByAddresses } from '@/lib/popular-routes-data'
 import { getCached, clearCacheNamespace } from '@/lib/cache/redis-cache'
+import { getCalibrationFactors } from '@/lib/services/pricing-calibration'
 import type {
   ComparisonResults,
   Coordinates,
@@ -92,6 +93,7 @@ export function resetRideComparisonCaches(): void {
   clearCacheNamespace('geocode')
   clearCacheNamespace('route')
   clearCacheNamespace('comparison')
+  clearCacheNamespace('calibration')
 }
 
 interface ComparisonCoreComputation {
@@ -248,6 +250,8 @@ async function getComparisonCore(
     : DYNAMIC_COMPARISON_CACHE_TTL_MS / 1000
 
   const { value } = await getCached<CachedComparisonCore>(cacheKey, ttlSeconds, async () => {
+    const calibrationFactors = await getCalibrationFactors()
+
     const resultsEntries = services.map(service => {
       const computation = pricingEngine.calculateFare({
         service,
@@ -258,6 +262,7 @@ async function getComparisonCore(
         timestamp,
         osrmDurationSec: metrics.osrmDurationSec,
         expectedDurationSec: metrics.durationMin * 60,
+        calibration: calibrationFactors[service],
       })
 
       return [service, buildRideResult(service, computation, metrics), computation] as const
