@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { handleOptions, withCors } from '@/lib/cors'
 import { getPriceTrendSnapshots } from '@/lib/database-price-trends'
 import { auth } from '@/auth'
-import { prisma } from '@/lib/prisma'
+import { verifyRouteOwnership } from '@/lib/route-ownership'
 import { logError } from '@/lib/monitoring'
 import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
 import { z } from 'zod'
@@ -18,26 +18,6 @@ const PriceTrendsQuerySchema = z.object({
     }),
   daysBack: z.coerce.number().int().min(1).max(90).optional().default(7),
 })
-
-/**
- * Verify that the user owns the specified route (IDOR protection).
- * Users can only access trends for routes they have saved.
- */
-async function verifyRouteOwnership(userId: string, routeId: string): Promise<boolean> {
-  if (!process.env.DATABASE_URL) {
-    return true
-  }
-
-  try {
-    const savedRoute = await prisma.savedRoute.findUnique({
-      where: { userId_routeId: { userId, routeId } },
-      select: { id: true },
-    })
-    return savedRoute != null
-  } catch {
-    return false
-  }
-}
 
 async function handleGet(request: NextRequest) {
   const requestId = getRequestId(request)

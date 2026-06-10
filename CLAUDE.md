@@ -95,9 +95,10 @@ Core pricing calculation with configurable rules from `lib/pricing-config.json`.
 - Location surcharges (CBD, downtown SF/SJ detection)
 - Time-based surge multipliers (weekday/weekend schedules)
 - Traffic multipliers (compares OSRM duration vs expected)
-- Confidence scoring (0.5-0.9 range based on uncertainty factors)
+- Data-driven calibration (optional `calibration` input; factors come from `lib/services/pricing-calibration.ts`, which aggregates median finalFare/estimatedFare ratios from `RideHistory` per service, clamped to 0.85–1.2, cached 6h)
+- Confidence scoring (0.5-0.95 range based on uncertainty factors; well-sampled calibration adds a small boost)
 
-Returns detailed `PricingBreakdown` with all fee components exposed.
+Returns detailed `PricingBreakdown` with all fee components exposed (including `calibrationFactor`/`calibrationAdjustment`).
 
 ### Ride Comparison Service
 

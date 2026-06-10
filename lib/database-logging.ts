@@ -4,7 +4,13 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import { $Enums, type ServiceType, type TrafficLevel, type AlertType } from '@/lib/generated/prisma'
+import {
+  $Enums,
+  Prisma,
+  type ServiceType,
+  type TrafficLevel,
+  type AlertType,
+} from '@/lib/generated/prisma'
 import {
   mapServiceToEnum,
   mapServiceToEnumWithAny,
@@ -37,6 +43,23 @@ export const isDatabaseAvailable = (): boolean => {
   }
 
   return hasDb
+}
+
+/**
+ * Returns true when the error is a Prisma P2025 "record not found" error.
+ * Handles both real PrismaClientKnownRequestError instances and duck-typed objects
+ * (e.g. plain Errors with a `.code` property, as emitted by some Prisma adapters).
+ */
+export function isPrismaNotFound(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === 'P2025'
+  }
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: unknown }).code === 'P2025'
+  )
 }
 
 /**
@@ -322,7 +345,9 @@ export async function getHourlyPriceAverage(routeId: string, service: RideServic
 // ============================================================================
 
 /**
- * Create a price alert
+ * Create a price alert.
+ * Returns the alert, 'route_not_found' when the routeId doesn't exist,
+ * or null on database unavailability/error.
  */
 export async function createPriceAlert(
   userId: string,
@@ -342,7 +367,7 @@ export async function createPriceAlert(
     })
 
     if (!route) {
-      return null
+      return 'route_not_found' as const
     }
 
     // Find or create saved route using composite key
@@ -390,5 +415,30 @@ export async function createPriceAlert(
   } catch (error) {
     reportPersistenceError('createPriceAlert', error)
     return null
+  }
+}
+
+/**
+ * Delete a price alert.
+ * Enforces ownership by checking userId before deleting to prevent IDOR.
+ * Returns 'deleted' if deleted, 'not_found' if the record doesn't exist or isn't owned,
+ * or 'error' if an unexpected database failure occurred.
+ */
+export async function deletePriceAlert(
+  id: string,
+  userId: string
+): Promise<'deleted' | 'not_found' | 'error'> {
+  if (!isDatabaseAvailable()) {
+    return 'error'
+  }
+
+  try {
+    await prisma.priceAlert.delete({ where: { id, userId } })
+
+    return 'deleted'
+  } catch (error) {
+    if (isPrismaNotFound(error)) return 'not_found'
+    reportPersistenceError('deletePriceAlert', error)
+    return 'error'
   }
 }

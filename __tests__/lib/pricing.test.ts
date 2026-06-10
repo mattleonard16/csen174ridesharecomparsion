@@ -142,6 +142,69 @@ describe('PricingEngine', () => {
     })
   })
 
+  describe('calculateFare - calibration', () => {
+    const baseInput = {
+      service: 'uber' as const,
+      pickupCoords: COORDS.regular,
+      destCoords: COORDS.regularDest,
+      distanceKm: 15,
+      durationMin: 25,
+      timestamp: new Date('2024-01-15T14:00:00'), // Off-peak weekday
+    }
+
+    it('defaults to factor 1 with zero adjustment when no calibration is provided', () => {
+      const result = pricingEngine.calculateFare(baseInput)
+
+      expect(result.breakdown.calibrationFactor).toBe(1)
+      expect(result.breakdown.calibrationAdjustment).toBe(0)
+    })
+
+    it('scales the fare by the calibration factor', () => {
+      const uncalibrated = pricingEngine.calculateFare(baseInput)
+      const calibrated = pricingEngine.calculateFare({
+        ...baseInput,
+        calibration: { factor: 1.1, sampleSize: 30 },
+      })
+
+      expect(calibrated.price).toBeCloseTo(uncalibrated.price * 1.1, 1)
+      expect(calibrated.breakdown.calibrationFactor).toBe(1.1)
+      expect(calibrated.breakdown.calibrationAdjustment).toBeGreaterThan(0)
+    })
+
+    it('keeps the min-fare floor when calibration pushes the fare below it', () => {
+      const tinyRide = {
+        ...baseInput,
+        distanceKm: 0.3,
+        durationMin: 2,
+      }
+      const uncalibrated = pricingEngine.calculateFare(tinyRide)
+      const calibrated = pricingEngine.calculateFare({
+        ...tinyRide,
+        calibration: { factor: 0.85, sampleSize: 30 },
+      })
+
+      expect(uncalibrated.breakdown.appliedMinFare).toBe(true)
+      expect(calibrated.breakdown.appliedMinFare).toBe(true)
+      expect(calibrated.price).toBe(uncalibrated.price)
+    })
+
+    it('boosts confidence for well-sampled calibration but not for thin samples', () => {
+      const uncalibrated = pricingEngine.calculateFare(baseInput)
+      const thinSample = pricingEngine.calculateFare({
+        ...baseInput,
+        calibration: { factor: 1.05, sampleSize: 5 },
+      })
+      const wellSampled = pricingEngine.calculateFare({
+        ...baseInput,
+        calibration: { factor: 1.05, sampleSize: 20 },
+      })
+
+      expect(thinSample.confidence).toBe(uncalibrated.confidence)
+      expect(wellSampled.confidence).toBeCloseTo(uncalibrated.confidence + 0.05, 5)
+      expect(wellSampled.confidence).toBeLessThanOrEqual(0.95)
+    })
+  })
+
   describe('calculateFare - surge multiplier', () => {
     describe('weekday rush hours', () => {
       it('should apply morning rush hour surge (7-9 AM)', () => {

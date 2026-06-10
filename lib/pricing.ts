@@ -56,6 +56,11 @@ interface PricingInput {
   timestamp?: Date
   osrmDurationSec?: number
   expectedDurationSec?: number
+  /**
+   * Data-driven correction from lib/services/pricing-calibration.ts
+   * (median finalFare/estimatedFare ratio observed in RideHistory).
+   */
+  calibration?: { factor: number; sampleSize: number }
 }
 
 interface PricingBreakdown {
@@ -72,6 +77,8 @@ interface PricingBreakdown {
   surgeFee: number
   trafficMultiplier: number
   trafficFee: number
+  calibrationFactor: number
+  calibrationAdjustment: number
   finalFare: number
   appliedMinFare: boolean
 }
@@ -153,6 +160,12 @@ export class PricingEngine {
     const trafficFee = subtotal * (trafficMultiplier - 1)
     let finalFare = subtotal + surgeFee + trafficFee
 
+    // Observed-data correction, applied before the min-fare floor: providers
+    // enforce their minimums regardless of how estimates trend.
+    const calibrationFactor = input.calibration?.factor ?? 1
+    const calibrationAdjustment = finalFare * (calibrationFactor - 1)
+    finalFare += calibrationAdjustment
+
     const appliedMinFare = finalFare < serviceConfig.minFare
     if (appliedMinFare) {
       finalFare = serviceConfig.minFare
@@ -176,6 +189,8 @@ export class PricingEngine {
         surgeFee,
         trafficMultiplier,
         trafficFee,
+        calibrationFactor,
+        calibrationAdjustment,
         finalFare,
         appliedMinFare,
       },
@@ -408,7 +423,11 @@ export class PricingEngine {
     const hour = (input.timestamp || new Date()).getHours()
     if (hour >= 1 && hour <= 5) confidence -= 0.1
 
-    return Math.max(confidence, 0.5)
+    // Estimates corrected by a well-sampled calibration factor are backed by
+    // real observed fares — worth a modest confidence bump.
+    if ((input.calibration?.sampleSize ?? 0) >= 20) confidence += 0.05
+
+    return Math.min(Math.max(confidence, 0.5), 0.95)
   }
 
   private getTimeSlot(hour: number, minute: number): string {

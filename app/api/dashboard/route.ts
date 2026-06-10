@@ -5,32 +5,8 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { logError } from '@/lib/monitoring'
 import { getRequestId, createResponseHeaders } from '@/lib/api-helpers'
+import { verifyRouteOwnership } from '@/lib/route-ownership'
 import type { DashboardResponse, ServiceType } from '@/types'
-
-/**
- * Verify that the user owns the specified route (IDOR protection)
- */
-async function verifyRouteOwnership(userId: string, routeId: string): Promise<boolean> {
-  if (!process.env.DATABASE_URL) {
-    // In mock mode, allow access
-    return true
-  }
-
-  try {
-    const savedRoute = await prisma.savedRoute.findUnique({
-      where: {
-        userId_routeId: {
-          userId,
-          routeId,
-        },
-      },
-      select: { id: true },
-    })
-    return savedRoute !== null
-  } catch {
-    return false
-  }
-}
 
 async function handleGet(request: NextRequest) {
   const requestId = getRequestId(request)

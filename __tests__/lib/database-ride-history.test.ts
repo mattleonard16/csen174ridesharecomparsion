@@ -13,6 +13,8 @@ import type { ComparisonResults } from '@/types'
 jest.mock('@/lib/database-logging', () => ({
   isDatabaseAvailable: jest.fn(),
   reportPersistenceError: jest.fn(),
+  // Real implementation: the not_found assertions rely on P2025 detection
+  isPrismaNotFound: jest.requireActual('@/lib/database-logging').isPrismaNotFound,
 }))
 
 jest.mock('@/lib/prisma', () => ({

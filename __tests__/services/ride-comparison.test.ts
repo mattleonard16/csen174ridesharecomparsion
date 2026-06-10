@@ -696,6 +696,8 @@ describe('buildRideResult — confidence propagation', () => {
         locationSurcharge: 0,
         longRideFee: 0,
         subtotal: 19,
+        calibrationFactor: 1,
+        calibrationAdjustment: 0,
         surgeMultiplier: 1,
         surgeFee: 0,
         trafficMultiplier: 1,
