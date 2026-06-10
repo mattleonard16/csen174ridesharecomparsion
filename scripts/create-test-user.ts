@@ -1,12 +1,19 @@
 import { prisma } from '../lib/prisma'
 import bcrypt from 'bcryptjs'
+import { passwordSchema, BCRYPT_ROUNDS } from '../lib/password-policy'
 
 async function createTestUser() {
   const email = process.argv[2] || 'mleonard1616@gmail.com'
   const password = process.argv[3] || 'testpassword123'
   const name = process.argv[4] || 'Matt Leonard'
 
-  const hashedPassword = await bcrypt.hash(password, 10)
+  const policyCheck = passwordSchema.safeParse(password)
+  if (!policyCheck.success) {
+    console.error('❌ Password rejected:', policyCheck.error.issues[0]?.message)
+    process.exit(1)
+  }
+
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
 
   try {
     const existing = await prisma.user.findUnique({

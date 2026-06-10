@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { type NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { Ratelimit } from '@upstash/ratelimit'
@@ -80,14 +81,8 @@ function getClientIp(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for')
   const realIp = request.headers.get('x-real-ip')
   const raw = forwarded?.split(',')[0].trim() || realIp || 'unknown'
-  // Hash to avoid storing raw IPs
-  let hash = 0
-  for (let i = 0; i < raw.length; i++) {
-    const char = raw.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash
-  }
-  return `ai_${Math.abs(hash)}`
+  // Hash to avoid storing raw IPs; SHA-256 avoids 32-bit collisions merging clients
+  return `ai_${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`
 }
 
 const RequestSchema = z.object({

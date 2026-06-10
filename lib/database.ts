@@ -27,8 +27,10 @@ export {
   getRoutePriceHistory,
   getHourlyPriceAverage,
   createPriceAlert,
+  deletePriceAlert,
   // Shared helpers (canonical source)
   isDatabaseAvailable,
+  isPrismaNotFound,
   reportPersistenceError,
   // Re-exported from service-mappings for backward compatibility
   mapServiceToEnum,

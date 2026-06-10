@@ -11,11 +11,13 @@ let mockGet = jest.fn()
 let mockSet = jest.fn().mockResolvedValue('OK')
 let mockIncr = jest.fn()
 let mockExpireat = jest.fn().mockResolvedValue(1)
+let mockRedisIsNull = false
 
 jest.mock('@/lib/redis', () => {
   return {
     get redis() {
       // Use a getter so we can re-mock per test without re-importing
+      if (mockRedisIsNull) return null
       return {
         get: mockGet,
         set: mockSet,
@@ -24,13 +26,14 @@ jest.mock('@/lib/redis', () => {
       }
     },
     get isRedisAvailable() {
-      return true
+      return !mockRedisIsNull
     },
   }
 })
 
 jest.mock('@/lib/monitoring', () => ({
   log: jest.fn(),
+  logError: jest.fn(),
 }))
 
 import { getCached, incrementQuotaCounter, clearCacheNamespace } from '@/lib/cache/redis-cache'
@@ -249,6 +252,33 @@ describe('incrementQuotaCounter', () => {
 
     const count = await incrementQuotaCounter('quota:ai:2026-03-10')
     expect(count).toBe(0)
+  })
+
+  describe('production fail-closed', () => {
+    const originalNodeEnv = process.env.NODE_ENV
+
+    afterEach(() => {
+      Object.assign(process.env, { NODE_ENV: originalNodeEnv })
+    })
+
+    it('returns Infinity on redis error in production so quota checks fail', async () => {
+      Object.assign(process.env, { NODE_ENV: 'production' })
+      mockIncr.mockRejectedValue(new Error('Redis connection failed'))
+
+      const count = await incrementQuotaCounter('quota:ai:2026-06-09')
+      expect(count).toBe(Number.POSITIVE_INFINITY)
+    })
+
+    it('returns Infinity when redis is null in production', async () => {
+      mockRedisIsNull = true
+      try {
+        Object.assign(process.env, { NODE_ENV: 'production' })
+        const count = await incrementQuotaCounter('quota:ai:2026-06-09')
+        expect(count).toBe(Number.POSITIVE_INFINITY)
+      } finally {
+        mockRedisIsNull = false
+      }
+    })
   })
 })
 

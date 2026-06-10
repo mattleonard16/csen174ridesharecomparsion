@@ -252,6 +252,25 @@ describe('AI Insights Service', () => {
       expect(result).toHaveLength(3)
     })
 
+    it('blocks AI call when quota counter fails closed (returns Infinity)', async () => {
+      process.env.OPENAI_API_KEY = 'sk-openai-test-key'
+      // Production Redis failure: incrementQuotaCounter fails closed with Infinity
+      mockIncrementQuotaCounter.mockResolvedValue(Number.POSITIVE_INFINITY)
+
+      const OpenAI = jest.requireMock('openai') as jest.Mock
+      const mockCreate = OpenAI.mock.results[0]?.value?.chat?.completions?.create
+
+      const result = await enhanceWithAI(sampleRecommendations)
+
+      if (mockCreate) {
+        expect(mockCreate).not.toHaveBeenCalled()
+      }
+
+      // Template fallback still gives users useful messages
+      expect(result[0].message).toContain('2 PM')
+      expect(result[0].message).toContain('$12')
+    })
+
     it('uses UTC date format for quota key', async () => {
       delete process.env.OPENAI_API_KEY
 
